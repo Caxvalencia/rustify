@@ -1,0 +1,13 @@
+[package]
+name = "rustify-codegen-rust"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+rustify-ir = { path = "../rustify-ir" }
+thiserror.workspace = true
+
+[dev-dependencies]
+rustify-analyzer = { path = "../rustify-analyzer" }
+rustify-parser = { path = "../rustify-parser" }

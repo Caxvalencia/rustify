@@ -1,0 +1,15 @@
+[package]
+name = "rustify-lsp"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "rustify-lsp"
+path = "src/main.rs"
+
+[dependencies]
+rustify-analyzer = { path = "../rustify-analyzer" }
+rustify-parser = { path = "../rustify-parser" }
+tokio = { version = "1", features = ["io-std", "macros", "rt-multi-thread"] }
+tower-lsp.workspace = true

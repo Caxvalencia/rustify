@@ -1,0 +1,18 @@
+[package]
+name = "rustify-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "rustify"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+clap.workspace = true
+rustify-analyzer = { path = "../rustify-analyzer" }
+rustify-codegen-rust = { path = "../rustify-codegen-rust" }
+rustify-parser = { path = "../rustify-parser" }
+serde_json.workspace = true
+

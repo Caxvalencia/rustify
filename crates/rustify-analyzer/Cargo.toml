@@ -1,0 +1,11 @@
+[package]
+name = "rustify-analyzer"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+rustify-ir = { path = "../rustify-ir" }
+rustify-parser = { path = "../rustify-parser" }
+serde.workspace = true
+

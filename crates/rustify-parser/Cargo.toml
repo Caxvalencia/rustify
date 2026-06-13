@@ -1,0 +1,13 @@
+[package]
+name = "rustify-parser"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+oxc_allocator.workspace = true
+oxc_parser.workspace = true
+oxc_span.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+

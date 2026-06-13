@@ -1,0 +1,22 @@
+{
+  "name": "vscode-rustify",
+  "displayName": "Rustify",
+  "version": "0.1.0",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "activationEvents": ["onLanguage:typescript"],
+  "main": "./src/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "rustify.preview",
+        "title": "Rustify: Preview Translation"
+      }
+    ]
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  }
+}
+

@@ -1,0 +1,13 @@
+{
+  "name": "eslint-plugin-rustify",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "src/index.js",
+  "engines": {
+    "node": ">=20"
+  },
+  "peerDependencies": {
+    "eslint": ">=9"
+  }
+}
+
