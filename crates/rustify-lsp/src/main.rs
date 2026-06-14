@@ -1,4 +1,7 @@
-use rustify_analyzer::{Diagnostic as RustifyDiagnostic, analyze};
+use rustify_analyzer::{
+    Diagnostic as RustifyDiagnostic, add_imported_declarations, analyze_module,
+};
+use rustify_ir::{ImportBinding as IrImportBinding, Module, ModuleImport, Workspace};
 use rustify_parser::{Program, Type};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -27,11 +30,10 @@ impl Backend {
             .await
             .insert(uri.clone(), text.clone());
         let documents = self.documents.read().await.clone();
-        let diagnostics = match workspace_program(&uri, &text, &documents) {
-            Ok(program) => analyze(&program)
-                .diagnostics
+        let diagnostics = match analyze_lsp_workspace(&uri, &text, &documents) {
+            Ok(analysis) => analysis
+                .entry_diagnostics
                 .iter()
-                .filter(|diagnostic| diagnostic.span.start < text.len())
                 .map(|diagnostic| to_lsp_diagnostic(&text, diagnostic))
                 .collect(),
             Err(error) => vec![Diagnostic {
@@ -48,56 +50,274 @@ impl Backend {
     }
 }
 
-fn workspace_program(
+#[derive(Debug)]
+struct LspWorkspaceAnalysis {
+    entry_diagnostics: Vec<RustifyDiagnostic>,
+    diagnostics: Vec<RustifyDiagnostic>,
+    workspace: Option<Workspace>,
+}
+
+fn analyze_lsp_workspace(
     uri: &Url,
     text: &str,
     documents: &HashMap<Url, String>,
-) -> std::result::Result<Program, rustify_parser::ParseError> {
-    let mut program = rustify_parser::parse(text)?;
-    let mut visited = HashSet::new();
-    if let Ok(path) = uri.to_file_path() {
-        visited.insert(path.clone());
-        add_imported_declarations(&mut program, &path, documents, &mut visited)?;
+) -> std::result::Result<LspWorkspaceAnalysis, String> {
+    let entry = uri
+        .to_file_path()
+        .map_err(|_| "Rustify workspace requires a file URI".to_owned())?;
+    let entry = entry.canonicalize().unwrap_or(entry);
+    let mut modules = HashMap::new();
+    collect_lsp_modules(
+        &entry,
+        Some(text.to_owned()),
+        documents,
+        &mut modules,
+        &mut HashSet::new(),
+    )?;
+    let mut paths: Vec<_> = modules.keys().cloned().collect();
+    paths.sort();
+    let names = lsp_module_names(&paths);
+    let mut diagnostics = Vec::new();
+    let mut entry_diagnostics = Vec::new();
+    let mut ir_modules = Vec::new();
+    let mut valid = true;
+    for path in &paths {
+        let program = modules.get(path).expect("known LSP module");
+        let visible = lsp_visible_imports(path, program, &modules)?;
+        let analysis = analyze_module(program, &visible);
+        if path == &entry {
+            entry_diagnostics = analysis.diagnostics.clone();
+        }
+        diagnostics.extend(analysis.diagnostics);
+        if let Some(ir) = analysis.ir {
+            ir_modules.push(Module {
+                name: names.get(path).expect("known LSP module name").clone(),
+                imports: lsp_module_imports(path, &program.imports, &modules, &names)?,
+                reexports: lsp_module_imports(path, &program.reexports, &modules, &names)?,
+                exports: program.exports.clone(),
+                default_export: program.default_export.clone(),
+                program: ir,
+            });
+        } else {
+            valid = false;
+        }
     }
-    Ok(program)
+    Ok(LspWorkspaceAnalysis {
+        entry_diagnostics,
+        diagnostics,
+        workspace: valid.then(|| Workspace {
+            entry: names.get(&entry).expect("entry LSP module name").clone(),
+            modules: ir_modules,
+        }),
+    })
 }
 
-fn add_imported_declarations(
-    target: &mut Program,
-    importer: &Path,
+fn collect_lsp_modules(
+    path: &Path,
+    source: Option<String>,
     documents: &HashMap<Url, String>,
-    visited: &mut HashSet<PathBuf>,
-) -> std::result::Result<(), rustify_parser::ParseError> {
-    let imports = target.imports.clone();
-    for import in imports {
-        let Some(path) = resolve_lsp_import(importer, &import.source) else {
-            continue;
-        };
-        let canonical = path.canonicalize().unwrap_or(path);
-        if !visited.insert(canonical.clone()) {
-            continue;
-        }
-        let source = Url::from_file_path(&canonical)
-            .ok()
-            .and_then(|uri| documents.get(&uri).cloned())
-            .or_else(|| std::fs::read_to_string(&canonical).ok());
-        let Some(source) = source else {
-            continue;
-        };
-        let mut imported = rustify_parser::parse(&source)?;
-        add_imported_declarations(&mut imported, &canonical, documents, visited)?;
-        let offset = target.source.len() + 1;
-        shift_program_spans(&mut imported, offset);
-        target.source.push('\n');
-        target.source.push_str(&imported.source);
-        target
-            .unsupported_top_level
-            .extend(imported.unsupported_top_level);
-        target.structs.extend(imported.structs);
-        target.enums.extend(imported.enums);
-        target.functions.extend(imported.functions);
+    modules: &mut HashMap<PathBuf, Program>,
+    visiting: &mut HashSet<PathBuf>,
+) -> std::result::Result<(), String> {
+    let path = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+    if visiting.contains(&path) {
+        return Err(format!(
+            "cyclic Rustify modules are not supported: {}",
+            path.display()
+        ));
     }
+    if modules.contains_key(&path) {
+        return Ok(());
+    }
+    visiting.insert(path.clone());
+    let source = source
+        .or_else(|| lsp_source(&path, documents))
+        .ok_or_else(|| format!("could not read module {}", path.display()))?;
+    let program = rustify_parser::parse(&source).map_err(|error| error.to_string())?;
+    let imports = program.imports.clone();
+    let reexports = program.reexports.clone();
+    modules.insert(path.clone(), program);
+    for import in imports.into_iter().chain(reexports) {
+        let Some(target) = resolve_lsp_import(&path, &import.source) else {
+            continue;
+        };
+        let target = target.canonicalize().unwrap_or(target);
+        collect_lsp_modules(&target, None, documents, modules, visiting)?;
+        let exported = lsp_exported_program(&target, modules, &mut HashSet::new())?;
+        for binding in &import.bindings {
+            if !program_declares(&exported, &binding.imported) {
+                return Err(format!(
+                    "module `{}` does not export `{}`",
+                    import.source, binding.imported
+                ));
+            }
+        }
+    }
+    visiting.remove(&path);
     Ok(())
+}
+
+fn lsp_source(path: &Path, documents: &HashMap<Url, String>) -> Option<String> {
+    Url::from_file_path(path)
+        .ok()
+        .and_then(|uri| documents.get(&uri).cloned())
+        .or_else(|| std::fs::read_to_string(path).ok())
+}
+
+fn lsp_visible_imports(
+    path: &Path,
+    program: &Program,
+    modules: &HashMap<PathBuf, Program>,
+) -> std::result::Result<Program, String> {
+    let mut visible = empty_program();
+    for import in &program.imports {
+        let Some(target) = resolve_lsp_import(path, &import.source) else {
+            continue;
+        };
+        let target = target.canonicalize().unwrap_or(target);
+        let imported = lsp_exported_program(&target, modules, &mut HashSet::new())?;
+        add_imported_declarations(&mut visible, &imported, &import.bindings);
+    }
+    Ok(visible)
+}
+
+fn lsp_module_names(paths: &[PathBuf]) -> HashMap<PathBuf, String> {
+    let mut names = HashMap::new();
+    let mut used = HashSet::new();
+    for path in paths {
+        let base = path
+            .file_stem()
+            .and_then(|name| name.to_str())
+            .map(rustify_codegen_rust::rust_module_identifier)
+            .filter(|name| !name.is_empty())
+            .unwrap_or_else(|| "module".to_owned());
+        let mut name = base.clone();
+        let mut suffix = 2;
+        while !used.insert(name.clone()) {
+            name = format!("{base}_{suffix}");
+            suffix += 1;
+        }
+        names.insert(path.clone(), name);
+    }
+    names
+}
+
+fn lsp_module_imports(
+    path: &Path,
+    imports_to_lower: &[rustify_parser::ImportDecl],
+    modules: &HashMap<PathBuf, Program>,
+    names: &HashMap<PathBuf, String>,
+) -> std::result::Result<Vec<ModuleImport>, String> {
+    let mut imports = Vec::new();
+    for import in imports_to_lower {
+        let Some(target) = resolve_lsp_import(path, &import.source) else {
+            continue;
+        };
+        let target = target.canonicalize().unwrap_or(target);
+        let imported = lsp_exported_program(&target, modules, &mut HashSet::new())?;
+        imports.push(ModuleImport {
+            module: names[&target].clone(),
+            types: import
+                .bindings
+                .iter()
+                .filter(|binding| {
+                    imported
+                        .structs
+                        .iter()
+                        .any(|item| item.name == binding.imported)
+                        || imported
+                            .enums
+                            .iter()
+                            .any(|item| item.name == binding.imported)
+                })
+                .map(|binding| IrImportBinding {
+                    imported: binding.imported.clone(),
+                    local: binding.local.clone(),
+                })
+                .collect(),
+            values: import
+                .bindings
+                .iter()
+                .filter(|binding| {
+                    imported
+                        .functions
+                        .iter()
+                        .any(|item| item.name == binding.imported)
+                })
+                .map(|binding| IrImportBinding {
+                    imported: binding.imported.clone(),
+                    local: binding.local.clone(),
+                })
+                .collect(),
+        });
+    }
+    Ok(imports)
+}
+
+fn lsp_exported_program(
+    path: &Path,
+    modules: &HashMap<PathBuf, Program>,
+    visiting: &mut HashSet<PathBuf>,
+) -> std::result::Result<Program, String> {
+    let path = path.to_path_buf();
+    if !visiting.insert(path.clone()) {
+        return Err(format!(
+            "cyclic Rustify modules are not supported: {}",
+            path.display()
+        ));
+    }
+    let program = modules
+        .get(&path)
+        .ok_or_else(|| format!("module {} was not loaded", path.display()))?;
+    let mut exported = empty_program();
+    let local_bindings = program
+        .exports
+        .iter()
+        .map(|name| rustify_parser::ImportBinding {
+            imported: name.clone(),
+            local: name.clone(),
+        })
+        .collect::<Vec<_>>();
+    add_imported_declarations(&mut exported, program, &local_bindings);
+    if let Some(default_export) = &program.default_export {
+        add_imported_declarations(
+            &mut exported,
+            program,
+            &[rustify_parser::ImportBinding {
+                imported: default_export.clone(),
+                local: "default".to_owned(),
+            }],
+        );
+    }
+    for reexport in &program.reexports {
+        let target = resolve_lsp_import(&path, &reexport.source)
+            .ok_or_else(|| format!("could not resolve module `{}`", reexport.source))?;
+        let target = target.canonicalize().unwrap_or(target);
+        let target_exports = lsp_exported_program(&target, modules, visiting)?;
+        add_imported_declarations(&mut exported, &target_exports, &reexport.bindings);
+    }
+    visiting.remove(&path);
+    Ok(exported)
+}
+
+fn program_declares(program: &Program, name: &str) -> bool {
+    program.structs.iter().any(|item| item.name == name)
+        || program.enums.iter().any(|item| item.name == name)
+        || program.functions.iter().any(|item| item.name == name)
+}
+
+fn empty_program() -> Program {
+    Program {
+        source: String::new(),
+        unsupported_top_level: Vec::new(),
+        imports: Vec::new(),
+        reexports: Vec::new(),
+        exports: Vec::new(),
+        default_export: None,
+        structs: Vec::new(),
+        enums: Vec::new(),
+        functions: Vec::new(),
+    }
 }
 
 fn resolve_lsp_import(importer: &Path, specifier: &str) -> Option<PathBuf> {
@@ -112,21 +332,6 @@ fn resolve_lsp_import(importer: &Path, specifier: &str) -> Option<PathBuf> {
     [path.with_extension("ts"), path.join("index.ts")]
         .into_iter()
         .find(|candidate| candidate.is_file())
-}
-
-fn shift_program_spans(program: &mut Program, offset: usize) {
-    for span in program
-        .imports
-        .iter_mut()
-        .map(|item| &mut item.span)
-        .chain(program.unsupported_top_level.iter_mut())
-        .chain(program.structs.iter_mut().map(|item| &mut item.span))
-        .chain(program.enums.iter_mut().map(|item| &mut item.span))
-        .chain(program.functions.iter_mut().map(|item| &mut item.span))
-    {
-        span.start += offset;
-        span.end += offset;
-    }
 }
 
 #[tower_lsp::async_trait]
@@ -407,9 +612,8 @@ fn preview_translation(
     let text = documents
         .get(uri)
         .ok_or_else(|| "document is not open in Rustify LSP".to_owned())?;
-    let program = workspace_program(uri, text, documents).map_err(|error| error.to_string())?;
-    let analysis = analyze(&program);
-    if !analysis.is_valid() {
+    let analysis = analyze_lsp_workspace(uri, text, documents)?;
+    if !analysis.diagnostics.is_empty() {
         return Err(analysis
             .diagnostics
             .iter()
@@ -417,8 +621,13 @@ fn preview_translation(
             .collect::<Vec<_>>()
             .join("\n"));
     }
-    rustify_codegen_rust::emit(analysis.ir.as_ref().expect("valid analysis has IR"))
-        .map_err(|error| error.to_string())
+    rustify_codegen_rust::emit_workspace(
+        analysis
+            .workspace
+            .as_ref()
+            .expect("valid LSP workspace analysis has IR"),
+    )
+    .map_err(|error| error.to_string())
 }
 
 fn to_lsp_diagnostic(source: &str, diagnostic: &RustifyDiagnostic) -> Diagnostic {
@@ -528,16 +737,29 @@ fn hover_contents(source: &str, word: &str) -> Option<String> {
                 } else {
                     rust_type(&field.ty)
                 };
-                format!("pub {}: {}", field.name, ty)
+                format!(
+                    "pub {}: {}",
+                    rustify_codegen_rust::rust_identifier(&field.name),
+                    ty
+                )
             })
             .collect::<Vec<_>>()
             .join(", ");
-        return Some(format!("**Rust struct:** `{word} {{ {fields} }}`"));
+        return Some(format!(
+            "**Rust struct:** `{} {{ {fields} }}`",
+            rustify_codegen_rust::rust_type_identifier(word)
+        ));
     }
     if let Some(enumeration) = program.enums.iter().find(|item| item.name == word) {
         return Some(format!(
-            "**Rust enum:** `{word} {{ {} }}`",
-            enumeration.variants.join(", ")
+            "**Rust enum:** `{} {{ {} }}`",
+            rustify_codegen_rust::rust_type_identifier(word),
+            enumeration
+                .variants
+                .iter()
+                .map(|variant| rustify_codegen_rust::rust_type_identifier(variant))
+                .collect::<Vec<_>>()
+                .join(", ")
         ));
     }
     let function = program.functions.iter().find(|item| item.name == word)?;
@@ -547,7 +769,7 @@ fn hover_contents(source: &str, word: &str) -> Option<String> {
         .map(|parameter| {
             format!(
                 "{}: {}",
-                parameter.name,
+                rustify_codegen_rust::rust_identifier(&parameter.name),
                 parameter
                     .ty
                     .as_ref()
@@ -565,7 +787,7 @@ fn hover_contents(source: &str, word: &str) -> Option<String> {
     Some(format!(
         "**Rust function:** `pub {}fn {}({params}) -> {return_type}`",
         if function.is_async { "async " } else { "" },
-        function.name
+        rustify_codegen_rust::rust_identifier(&function.name)
     ))
 }
 
@@ -576,7 +798,8 @@ fn rust_type(ty: &Type) -> String {
         Type::Boolean => "bool".to_owned(),
         Type::Void => "()".to_owned(),
         Type::JsonValue => "rustify_runtime::JsonValue".to_owned(),
-        Type::Named(name) | Type::Unsupported(name) => name.clone(),
+        Type::Named(name) => rustify_codegen_rust::rust_type_identifier(name),
+        Type::Unsupported(name) => name.clone(),
         Type::Array(inner) => format!("Vec<{}>", rust_type(inner)),
         Type::Optional(inner) => format!("Option<{}>", rust_type(inner)),
         Type::Result(ok, error) => format!("Result<{}, {}>", rust_type(ok), rust_type(error)),
@@ -620,18 +843,62 @@ fn imported_definition(
 ) -> Option<Location> {
     let importer = uri.to_file_path().ok()?;
     let program = rustify_parser::parse(source).ok()?;
-    let import = program
-        .imports
-        .iter()
-        .find(|import| import.names.iter().any(|imported| imported == name))?;
+    let (import, binding) =
+        program
+            .imports
+            .iter()
+            .chain(&program.reexports)
+            .find_map(|import| {
+                import
+                    .bindings
+                    .iter()
+                    .find(|binding| binding.local == name)
+                    .map(|binding| (import, binding))
+            })?;
     let path = resolve_lsp_import(&importer, &import.source)?;
     let canonical = path.canonicalize().unwrap_or(path);
+    exported_definition(
+        &canonical,
+        &binding.imported,
+        documents,
+        &mut HashSet::new(),
+    )
+}
+
+fn exported_definition(
+    path: &Path,
+    name: &str,
+    documents: &HashMap<Url, String>,
+    visited: &mut HashSet<PathBuf>,
+) -> Option<Location> {
+    let canonical = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+    if !visited.insert(canonical.clone()) {
+        return None;
+    }
     let target_uri = Url::from_file_path(&canonical).ok()?;
     let target_source = documents
         .get(&target_uri)
         .cloned()
-        .or_else(|| std::fs::read_to_string(canonical).ok())?;
-    declaration_range(&target_source, name).map(|range| Location::new(target_uri, range))
+        .or_else(|| std::fs::read_to_string(&canonical).ok())?;
+    if let Some(range) = declaration_range(&target_source, name) {
+        return Some(Location::new(target_uri, range));
+    }
+    let program = rustify_parser::parse(&target_source).ok()?;
+    if name == "default"
+        && let Some(default_export) = &program.default_export
+    {
+        return declaration_range(&target_source, default_export)
+            .map(|range| Location::new(target_uri, range));
+    }
+    let (reexport, binding) = program.reexports.iter().find_map(|reexport| {
+        reexport
+            .bindings
+            .iter()
+            .find(|binding| binding.local == name)
+            .map(|binding| (reexport, binding))
+    })?;
+    let target = resolve_lsp_import(&canonical, &reexport.source)?;
+    exported_definition(&target, &binding.imported, documents, visited)
 }
 
 fn identifier_ranges(source: &str, name: &str) -> Vec<Range> {
@@ -684,7 +951,7 @@ fn workspace_documents(open_documents: &HashMap<Url, String>) -> HashMap<Url, St
         let Ok(program) = rustify_parser::parse(&source) else {
             continue;
         };
-        for import in program.imports {
+        for import in program.imports.into_iter().chain(program.reexports) {
             let Some(imported_path) = resolve_lsp_import(&path, &import.source) else {
                 continue;
             };
@@ -943,9 +1210,95 @@ mod tests {
             .unwrap();
         let text = std::fs::read_to_string(&entry).unwrap();
         let uri = Url::from_file_path(entry).unwrap();
-        let program = workspace_program(&uri, &text, &HashMap::new()).unwrap();
-        let analysis = analyze(&program);
-        assert!(analysis.is_valid(), "{:?}", analysis.diagnostics);
+        let analysis = analyze_lsp_workspace(&uri, &text, &HashMap::new()).unwrap();
+        assert!(
+            analysis.diagnostics.is_empty(),
+            "{:?}",
+            analysis.diagnostics
+        );
+        assert_eq!(analysis.workspace.unwrap().modules.len(), 2);
+    }
+
+    #[test]
+    fn rejects_private_imports_in_lsp_workspace() {
+        let directory =
+            std::env::temp_dir().join(format!("rustify-lsp-private-{}", std::process::id()));
+        std::fs::create_dir_all(&directory).unwrap();
+        let private = directory.join("private.ts");
+        let entry = directory.join("main.ts");
+        std::fs::write(
+            &private,
+            "function hidden(): string { return \"hidden\" }\n",
+        )
+        .unwrap();
+        let text = "import { hidden } from \"./private\"\n\
+                    export function run(): string { return hidden() }\n";
+        std::fs::write(&entry, text).unwrap();
+        let uri = Url::from_file_path(entry).unwrap();
+        let error = analyze_lsp_workspace(&uri, text, &HashMap::new()).unwrap_err();
+        assert!(error.contains("does not export `hidden`"), "{error}");
+        let _ = std::fs::remove_dir_all(directory);
+    }
+
+    #[test]
+    fn rejects_private_symbols_leaking_into_importers() {
+        let directory =
+            std::env::temp_dir().join(format!("rustify-lsp-private-leak-{}", std::process::id()));
+        std::fs::create_dir_all(&directory).unwrap();
+        let helpers = directory.join("helpers.ts");
+        let entry = directory.join("main.ts");
+        std::fs::write(
+            &helpers,
+            "function hidden(): string { return \"hidden\" }\n\
+             export function publicValue(): string { return hidden() }\n",
+        )
+        .unwrap();
+        let text = "import { publicValue } from \"./helpers\"\n\
+                    export function run(): string { return hidden() }\n";
+        std::fs::write(&entry, text).unwrap();
+        let uri = Url::from_file_path(entry).unwrap();
+        let analysis = analyze_lsp_workspace(&uri, text, &HashMap::new()).unwrap();
+        assert!(
+            analysis
+                .entry_diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.message.contains("unknown function `hidden`")),
+            "{:?}",
+            analysis.entry_diagnostics
+        );
+        let _ = std::fs::remove_dir_all(directory);
+    }
+
+    #[test]
+    fn previews_duplicate_private_symbols_in_isolated_modules() {
+        let directory = std::env::temp_dir().join(format!(
+            "rustify-lsp-module-isolation-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&directory).unwrap();
+        std::fs::write(
+            directory.join("first.ts"),
+            "function hidden(): string { return \"first\" }\n\
+             export function first(): string { return hidden() }\n",
+        )
+        .unwrap();
+        std::fs::write(
+            directory.join("second.ts"),
+            "function hidden(): string { return \"second\" }\n\
+             export function second(): string { return hidden() }\n",
+        )
+        .unwrap();
+        let entry = directory.join("main.ts");
+        let text = "import { first } from \"./first\"\n\
+                    import { second } from \"./second\"\n\
+                    export function combined(): string { return first() + second() }\n";
+        std::fs::write(&entry, text).unwrap();
+        let uri = Url::from_file_path(entry).unwrap();
+        let documents = HashMap::from([(uri.clone(), text.to_owned())]);
+        let rust = preview_translation(&uri, &documents).unwrap();
+        assert_eq!(rust.matches("fn hidden()").count(), 2, "{rust}");
+        assert!(!rust.contains("pub fn hidden()"), "{rust}");
+        let _ = std::fs::remove_dir_all(directory);
     }
 
     #[test]
@@ -956,7 +1309,7 @@ mod tests {
             "function greet(name: string): string { return `Hi ${name}` }".to_owned(),
         )]);
         let rust = preview_translation(&uri, &documents).unwrap();
-        assert!(rust.contains("pub fn greet(name: String) -> String"));
+        assert!(rust.contains("fn greet(name: String) -> String"));
         assert!(rust.contains("format!(\"Hi {}\", name)"));
     }
 
@@ -982,13 +1335,114 @@ mod tests {
     }
 
     #[test]
+    fn resolves_aliased_import_definition_to_original_declaration() {
+        let directory =
+            std::env::temp_dir().join(format!("rustify-lsp-alias-{}", std::process::id()));
+        std::fs::create_dir_all(&directory).unwrap();
+        let models = directory.join("models.ts");
+        let entry = directory.join("main.ts");
+        std::fs::write(
+            &models,
+            "export function greet(): string { return \"hello\" }\n",
+        )
+        .unwrap();
+        let text = "import { greet as welcome } from \"./models\"\n\
+                    export function run(): string { return welcome() }\n";
+        std::fs::write(&entry, text).unwrap();
+        let uri = Url::from_file_path(entry).unwrap();
+        let location = imported_definition(&uri, text, "welcome", &HashMap::new()).unwrap();
+        assert!(location.uri.path().ends_with("/models.ts"));
+        let target = std::fs::read_to_string(models).unwrap();
+        assert_eq!(location.range, declaration_range(&target, "greet").unwrap());
+        let documents = HashMap::from([(uri.clone(), text.to_owned())]);
+        let rust = preview_translation(&uri, &documents).unwrap();
+        assert!(rust.contains("greet as welcome"), "{rust}");
+        let _ = std::fs::remove_dir_all(directory);
+    }
+
+    #[test]
+    fn previews_transitive_named_reexports_and_rejects_cycles() {
+        let directory =
+            std::env::temp_dir().join(format!("rustify-lsp-reexports-{}", std::process::id()));
+        std::fs::create_dir_all(&directory).unwrap();
+        std::fs::write(
+            directory.join("models.ts"),
+            "export function greet(): string { return \"hello\" }\n",
+        )
+        .unwrap();
+        std::fs::write(
+            directory.join("public.ts"),
+            "export { greet as welcome } from \"./models\"\n",
+        )
+        .unwrap();
+        let entry = directory.join("main.ts");
+        let text = "import { welcome } from \"./public\"\n\
+                    export function run(): string { return welcome() }\n";
+        std::fs::write(&entry, text).unwrap();
+        let uri = Url::from_file_path(&entry).unwrap();
+        let documents = HashMap::from([(uri.clone(), text.to_owned())]);
+        let rust = preview_translation(&uri, &documents).unwrap();
+        assert!(
+            rust.contains("pub use super::rustify_models::{greet as welcome};"),
+            "{rust}"
+        );
+        let location = imported_definition(&uri, text, "welcome", &documents).unwrap();
+        assert!(location.uri.path().ends_with("/models.ts"));
+
+        std::fs::write(
+            directory.join("models.ts"),
+            "import { welcome } from \"./public\"\n\
+             export function greet(): string { return welcome() }\n",
+        )
+        .unwrap();
+        let error = analyze_lsp_workspace(&uri, text, &documents).unwrap_err();
+        assert!(
+            error.contains("cyclic Rustify modules are not supported"),
+            "{error}"
+        );
+        let _ = std::fs::remove_dir_all(directory);
+    }
+
+    #[test]
+    fn previews_and_navigates_default_imports() {
+        let directory =
+            std::env::temp_dir().join(format!("rustify-lsp-default-{}", std::process::id()));
+        std::fs::create_dir_all(&directory).unwrap();
+        let greeter = directory.join("greeter.ts");
+        let entry = directory.join("main.ts");
+        std::fs::write(
+            &greeter,
+            "export default function greet(): string { return \"hello\" }\n",
+        )
+        .unwrap();
+        let text = "import welcome from \"./greeter\"\n\
+                    export function run(): string { return welcome() }\n";
+        std::fs::write(&entry, text).unwrap();
+        let uri = Url::from_file_path(&entry).unwrap();
+        let documents = HashMap::from([(uri.clone(), text.to_owned())]);
+        let rust = preview_translation(&uri, &documents).unwrap();
+        assert!(rust.contains("pub use self::greet as default;"), "{rust}");
+        assert!(rust.contains("default as welcome"), "{rust}");
+        let location = imported_definition(&uri, text, "welcome", &documents).unwrap();
+        assert!(location.uri.path().ends_with("/greeter.ts"));
+        let target = std::fs::read_to_string(greeter).unwrap();
+        assert_eq!(location.range, declaration_range(&target, "greet").unwrap());
+        let _ = std::fs::remove_dir_all(directory);
+    }
+
+    #[test]
     fn hovers_structs_and_functions_as_rust() {
-        let source = "type User = { name: string; nickname?: string }\n\
-                      function greet(user: User): string { return user.name }";
-        let structure = hover_contents(source, "User").unwrap();
-        let function = hover_contents(source, "greet").unwrap();
+        let source = "type user_record = { displayName: string; nickname?: string }\n\
+                      enum task_status { in_progress, $done }\n\
+                      function greetUser(userRecord: user_record): string { return userRecord.displayName }";
+        let structure = hover_contents(source, "user_record").unwrap();
+        let enumeration = hover_contents(source, "task_status").unwrap();
+        let function = hover_contents(source, "greetUser").unwrap();
+        assert!(structure.contains("UserRecord"));
+        assert!(structure.contains("display_name: String"));
         assert!(structure.contains("Option<String>"));
-        assert!(function.contains("pub fn greet(user: User) -> String"));
+        assert!(enumeration.contains("TaskStatus { InProgress, DollarDone }"));
+        assert!(function.contains("pub fn greet_user(user_record: UserRecord) -> String"));
     }
 
     #[test]

@@ -1,5 +1,34 @@
 # PLAN.md — Rustify Compiler
 
+## Estado de ejecución
+
+Leyenda:
+
+* `[x]` Completo para el alcance definido.
+* `[-]` Parcial: existe una implementación funcional, pero faltan partes del objetivo.
+* `[ ]` Pendiente.
+
+Resumen:
+
+* `[x]` Compilador nativo MVP: parser Oxc, analyzer, IR tipado, codegen Rust y CLI.
+* `[x]` Subconjunto v0.1: tipos, structs/interfaces simples, arrays, enums, funciones, variables, control de flujo y `console.log`.
+* `[x]` Seguridad nativa: rechazo de sintaxis dinámica, comprobación de tipos, ownership básico y Rust generado compatible con `-D warnings`.
+* `[x]` Runtime: JSON seguro, `Result`, async/await, `Promise<T>` y timers no bloqueantes.
+* `[x]` Herramientas: LSP, extensión VSCode, plugin ESLint básico y playground.
+* `[x]` Módulos: imports/exports relativos, aliases, re-exports, default exports, navegación, privacidad, namespaces Rust aislados y rechazo explícito de ciclos.
+* `[-]` ESLint: las reglas básicas y autofixes seguros funcionan; todavía duplica reglas en JavaScript en lugar de consumir directamente `rustify-analyzer`.
+* `[-]` Modo híbrido: fallback funcional mediante Node 22+ como host V8 externo; falta V8 embebido, shims Rust y una estrategia de interoperabilidad nativo/JS.
+* `[ ]` Rustify 1.0: estabilización de contratos, publicación, compatibilidad ampliada y validación multiplataforma de distribución.
+
+Pendientes prioritarios:
+
+1. `[x]` Representar módulos en IR/codegen sin aplanar todas las declaraciones en un único namespace Rust.
+2. `[x]` Permitir helpers privados con el mismo nombre en módulos distintos sin colisiones.
+3. `[ ]` Eliminar la duplicación de reglas entre ESLint y `rustify-analyzer`, mediante bindings o un formato de diagnósticos compartido.
+4. `[x]` Ampliar imports/exports: aliases, re-exports, default exports y rechazo explícito de ciclos.
+5. `[ ]` Embebido V8 o runtime híbrido equivalente, con límites claros de interoperabilidad.
+6. `[ ]` Endurecer distribución 1.0: paquetes publicables, pruebas reales de VSCode, benchmarks, fuzzing y matriz de compatibilidad.
+
 ## 1. Visión del proyecto
 
 Crear un compilador/transpilador llamado Rustify que permita escribir un subconjunto estricto de TypeScript y compilarlo a Rust seguro, legible y mantenible.
@@ -658,7 +687,7 @@ VSCode Extension
 
 ---
 
-## 11. Fase 1 — Setup del repositorio
+## 11. Fase 1 — Setup del repositorio `[x]`
 
 Tareas:
 
@@ -677,7 +706,7 @@ Criterios de aceptación:
 
 ---
 
-## 12. Fase 2 — Validador Rustify
+## 12. Fase 2 — Validador Rustify `[x]`
 
 Implementar reglas de rechazo.
 
@@ -689,7 +718,7 @@ Además:
 
 ---
 
-## 13. Fase 3 — Type checker mínimo
+## 13. Fase 3 — Type checker mínimo `[x]`
 
 Implementar:
 
@@ -707,7 +736,7 @@ El LSP debe reutilizar exactamente este sistema.
 
 ---
 
-## 14. Fase 4 — Linter de desarrollo (Rustify LSP / ESLint Plugin)
+## 14. Fase 4 — Linter de desarrollo (Rustify LSP / ESLint Plugin) `[-]`
 
 Objetivo:
 
@@ -774,14 +803,14 @@ Funciones:
 
 ### Criterios de aceptación
 
-* Diagnósticos visibles en VSCode.
-* ESLint detecta incompatibilidades.
-* Reutilización del Analyzer Core.
-* Sin duplicación de reglas.
+* `[x]` Diagnósticos visibles en VSCode.
+* `[x]` ESLint detecta incompatibilidades.
+* `[-]` Reutilización del Analyzer Core: CLI, LSP y playground lo reutilizan; ESLint todavía no.
+* `[ ]` Sin duplicación de reglas entre analyzer y ESLint.
 
 ---
 
-## 15. Fase 5 — Generación de IR
+## 15. Fase 5 — Generación de IR `[x]`
 
 Convertir código válido a IR.
 
@@ -789,7 +818,7 @@ El LSP podrá utilizar este IR para mostrar información avanzada.
 
 ---
 
-## 16. Fase 6 — Codegen Rust v0.1
+## 16. Fase 6 — Codegen Rust v0.1 `[x]`
 
 Generar Rust para:
 
@@ -811,7 +840,7 @@ debe mostrar cómo se traducirá cada elemento.
 
 ---
 
-## 17. Fase 7 — Runtime Rustify
+## 17. Fase 7 — Runtime Rustify `[x]`
 
 Crear crate:
 
@@ -827,7 +856,7 @@ Objetivo:
 
 ---
 
-## 18. Fase 8 — Soporte para módulos
+## 18. Fase 8 — Soporte para módulos `[x]`
 
 Soportar:
 
@@ -838,9 +867,22 @@ import
 
 El LSP debe resolver símbolos entre módulos.
 
+Estado:
+
+* `[x]` Imports relativos con nombres.
+* `[x]` Exports explícitos y rechazo de imports privados.
+* `[x]` Resolución, navegación y análisis básico entre módulos en CLI/LSP.
+* `[x]` Validación de alcance para impedir el uso implícito de símbolos privados.
+* `[x]` Namespaces reales en IR/codegen, con imports Rust explícitos y helpers privados aislados.
+* `[x]` Nombres de archivo normalizados a identificadores de módulo Rust seguros.
+* `[x]` Aliases de imports para tipos y funciones, incluyendo navegación LSP.
+* `[x]` Re-exports nombrados transitivos, incluyendo aliases y navegación LSP al origen.
+* `[x]` Política de ciclos explícita: los grafos cíclicos se rechazan antes del análisis/codegen.
+* `[x]` Default exports/imports nombrados para tipos y funciones, incluyendo navegación LSP.
+
 ---
 
-## 19. Fase 9 — Testing
+## 19. Fase 9 — Testing `[x]`
 
 ### Tests del compilador
 
@@ -872,11 +914,18 @@ Rustify Analyzer
 CLI / LSP / ESLint
 ```
 
+Estado:
+
+* `[x]` Tests unitarios y de integración para parser, analyzer, codegen, CLI, LSP y runtime.
+* `[x]` Tests del plugin ESLint y validación sintáctica de la extensión VSCode.
+* `[x]` Gate CI que compila ejemplos como proyectos Cargo aislados y ejecuta fallback/playground.
+* `[ ]` Tests end-to-end reales dentro de VSCode y pruebas de distribución publicada.
+
 ---
 
 ## 20. Roadmap resumido
 
-### MVP 0.1
+### MVP 0.1 `[x]`
 
 * CLI.
 * Parser.
@@ -890,7 +939,7 @@ CLI / LSP / ESLint
 * Enums.
 * Rust codegen.
 
-### MVP 0.2
+### MVP 0.2 `[x]`
 
 * VSCode Extension.
 * Quick Fixes.
@@ -898,26 +947,28 @@ CLI / LSP / ESLint
 * Módulos.
 * Mejor inferencia.
 
-### MVP 0.3
+### MVP 0.3 `[x]`
 
 * Compatibilidad ampliada.
 * JSON.
 * Result.
 * Mejor experiencia de desarrollo.
 
-### MVP 0.4
+### MVP 0.4 `[x]`
 
 * Async/await.
 * Promise.
 * Runtime async.
 
-### MVP 0.5
+### MVP 0.5 `[-]`
 
 * Modo híbrido.
 * Integración V8.
 * Explicaciones avanzadas.
 
-### 1.0
+Implementado con fallback V8 externo mediante Node 22+; V8 embebido e interoperabilidad híbrida siguen pendientes.
+
+### 1.0 `[ ]`
 
 * Rustify estable.
 * LSP completo.

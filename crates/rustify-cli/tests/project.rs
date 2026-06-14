@@ -486,12 +486,13 @@ fn hybrid_fallback_handles_typescript_outside_normalized_parser_subset() {
     std::fs::create_dir_all(directory.join("src")).unwrap();
     std::fs::write(
         directory.join("src/message.ts"),
-        "export default function message(): string { return \"parser fallback works\" }\n",
+        "export const suffix = \" works\"\n\
+         export default function message(): string { return \"parser fallback\" + suffix }\n",
     )
     .unwrap();
     std::fs::write(
         directory.join("src/main.ts"),
-        "import message from \"./message.ts\"\nconsole.log(message())\n",
+        "import message, { suffix } from \"./message.ts\"\nconsole.log(message())\n",
     )
     .unwrap();
     std::fs::write(

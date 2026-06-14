@@ -1,6 +1,7 @@
 use anyhow::{Context, Result, anyhow, bail};
 use clap::{Parser, Subcommand, ValueEnum};
-use rustify_analyzer::{analyze, line_column};
+use rustify_analyzer::{add_imported_declarations, analyze_module, line_column};
+use rustify_ir::{ImportBinding as IrImportBinding, Module, ModuleImport, Workspace};
 use rustify_parser::Program;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
@@ -210,21 +211,58 @@ fn load(file: &Path) -> Result<(String, Program, rustify_analyzer::Analysis)> {
         source: String::new(),
         unsupported_top_level: Vec::new(),
         imports: Vec::new(),
+        reexports: Vec::new(),
         exports: Vec::new(),
+        default_export: None,
         structs: Vec::new(),
         enums: Vec::new(),
         functions: Vec::new(),
     };
-    let mut paths: Vec<_> = modules.keys().collect();
+    let entry = file.canonicalize()?;
+    let mut paths: Vec<_> = modules.keys().cloned().collect();
     paths.sort();
-    for path in paths {
-        append_program(
-            &mut merged,
-            modules.get(path).expect("known module").clone(),
+    let module_names = module_names(&paths);
+    let mut diagnostics = Vec::new();
+    let mut ir_modules = Vec::new();
+    let mut valid = true;
+    for path in &paths {
+        let program = modules.get(path).expect("known module");
+        let visible = visible_imports(path, program, &modules)?;
+        let module_analysis = analyze_module(program, &visible);
+        let offset = merged.source.len();
+        diagnostics.extend(
+            module_analysis
+                .diagnostics
+                .into_iter()
+                .map(|mut diagnostic| {
+                    diagnostic.span.start += offset;
+                    diagnostic.span.end += offset;
+                    diagnostic
+                }),
         );
+        if let Some(ir) = module_analysis.ir {
+            ir_modules.push(Module {
+                name: module_names.get(path).expect("known module name").clone(),
+                imports: module_imports(path, &program.imports, &modules, &module_names)?,
+                reexports: module_imports(path, &program.reexports, &modules, &module_names)?,
+                exports: program.exports.clone(),
+                default_export: program.default_export.clone(),
+                program: ir,
+            });
+        } else {
+            valid = false;
+        }
+        append_program(&mut merged, program.clone());
     }
     let source = merged.source.clone();
-    let analysis = analyze(&merged);
+    let analysis = rustify_analyzer::Analysis {
+        diagnostics,
+        ir: None,
+        workspace: valid.then(|| Workspace {
+            entry: module_names.get(&entry).expect("entry module name").clone(),
+            modules: ir_modules,
+        }),
+    };
     Ok((source, merged, analysis))
 }
 
@@ -243,7 +281,7 @@ fn load_module(
         fs::read_to_string(&path).with_context(|| format!("could not read {}", path.display()))?;
     let program = rustify_parser::parse(&source)
         .with_context(|| format!("could not parse {}", path.display()))?;
-    for import in &program.imports {
+    for import in program.imports.iter().chain(&program.reexports) {
         if !import.source.starts_with('.') {
             continue;
         }
@@ -277,22 +315,219 @@ fn resolve_import(importer: &Path, specifier: &str) -> Result<PathBuf> {
 }
 
 fn validate_imports(modules: &HashMap<PathBuf, Program>) -> Result<()> {
+    validate_module_cycles(modules)?;
     for (path, program) in modules {
-        for import in &program.imports {
+        for import in program.imports.iter().chain(&program.reexports) {
             if !import.source.starts_with('.') {
                 continue;
             }
             let target = resolve_import(path, &import.source)?.canonicalize()?;
-            let target_program = modules
-                .get(&target)
-                .ok_or_else(|| anyhow!("module {} was not loaded", target.display()))?;
-            let exports: HashSet<_> = target_program.exports.iter().map(String::as_str).collect();
-            for name in &import.names {
-                if !exports.contains(name.as_str()) {
-                    bail!("module `{}` does not export `{name}`", import.source);
+            let target_program = exported_program(&target, modules, &mut HashSet::new())?;
+            for binding in &import.bindings {
+                if !program_declares(&target_program, &binding.imported) {
+                    bail!(
+                        "module `{}` does not export `{}`",
+                        import.source,
+                        binding.imported
+                    );
                 }
             }
         }
+    }
+    Ok(())
+}
+
+fn visible_imports(
+    path: &Path,
+    program: &Program,
+    modules: &HashMap<PathBuf, Program>,
+) -> Result<Program> {
+    let mut visible = empty_program();
+    for import in &program.imports {
+        if !import.source.starts_with('.') {
+            continue;
+        }
+        let target = resolve_import(path, &import.source)?.canonicalize()?;
+        let target_program = exported_program(&target, modules, &mut HashSet::new())?;
+        add_imported_declarations(&mut visible, &target_program, &import.bindings);
+    }
+    Ok(visible)
+}
+
+fn empty_program() -> Program {
+    Program {
+        source: String::new(),
+        unsupported_top_level: Vec::new(),
+        imports: Vec::new(),
+        reexports: Vec::new(),
+        exports: Vec::new(),
+        default_export: None,
+        structs: Vec::new(),
+        enums: Vec::new(),
+        functions: Vec::new(),
+    }
+}
+
+fn module_names(paths: &[PathBuf]) -> HashMap<PathBuf, String> {
+    let mut names = HashMap::new();
+    let mut used = HashSet::new();
+    for path in paths {
+        let base = path
+            .file_stem()
+            .and_then(|name| name.to_str())
+            .map(rustify_codegen_rust::rust_module_identifier)
+            .filter(|name| !name.is_empty())
+            .unwrap_or_else(|| "module".to_owned());
+        let mut name = base.clone();
+        let mut suffix = 2;
+        while !used.insert(name.clone()) {
+            name = format!("{base}_{suffix}");
+            suffix += 1;
+        }
+        names.insert(path.clone(), name);
+    }
+    names
+}
+
+fn module_imports(
+    path: &Path,
+    imports_to_lower: &[rustify_parser::ImportDecl],
+    modules: &HashMap<PathBuf, Program>,
+    module_names: &HashMap<PathBuf, String>,
+) -> Result<Vec<ModuleImport>> {
+    let mut imports = Vec::new();
+    for import in imports_to_lower {
+        if !import.source.starts_with('.') {
+            continue;
+        }
+        let target = resolve_import(path, &import.source)?.canonicalize()?;
+        let target_program = exported_program(&target, modules, &mut HashSet::new())?;
+        imports.push(ModuleImport {
+            module: module_names
+                .get(&target)
+                .ok_or_else(|| anyhow!("module {} has no generated name", target.display()))?
+                .clone(),
+            types: import
+                .bindings
+                .iter()
+                .filter(|binding| {
+                    target_program
+                        .structs
+                        .iter()
+                        .any(|item| item.name == binding.imported)
+                        || target_program
+                            .enums
+                            .iter()
+                            .any(|item| item.name == binding.imported)
+                })
+                .map(|binding| IrImportBinding {
+                    imported: binding.imported.clone(),
+                    local: binding.local.clone(),
+                })
+                .collect(),
+            values: import
+                .bindings
+                .iter()
+                .filter(|binding| {
+                    target_program
+                        .functions
+                        .iter()
+                        .any(|item| item.name == binding.imported)
+                })
+                .map(|binding| IrImportBinding {
+                    imported: binding.imported.clone(),
+                    local: binding.local.clone(),
+                })
+                .collect(),
+        });
+    }
+    Ok(imports)
+}
+
+fn exported_program(
+    path: &Path,
+    modules: &HashMap<PathBuf, Program>,
+    visiting: &mut HashSet<PathBuf>,
+) -> Result<Program> {
+    let path = path.to_path_buf();
+    if !visiting.insert(path.clone()) {
+        bail!(
+            "cyclic Rustify modules are not supported: {}",
+            path.display()
+        );
+    }
+    let program = modules
+        .get(&path)
+        .ok_or_else(|| anyhow!("module {} was not loaded", path.display()))?;
+    let mut exported = empty_program();
+    let local_bindings = program
+        .exports
+        .iter()
+        .map(|name| rustify_parser::ImportBinding {
+            imported: name.clone(),
+            local: name.clone(),
+        })
+        .collect::<Vec<_>>();
+    add_imported_declarations(&mut exported, program, &local_bindings);
+    if let Some(default_export) = &program.default_export {
+        add_imported_declarations(
+            &mut exported,
+            program,
+            &[rustify_parser::ImportBinding {
+                imported: default_export.clone(),
+                local: "default".to_owned(),
+            }],
+        );
+    }
+    for reexport in &program.reexports {
+        let target = resolve_import(&path, &reexport.source)?.canonicalize()?;
+        let target_exports = exported_program(&target, modules, visiting)?;
+        add_imported_declarations(&mut exported, &target_exports, &reexport.bindings);
+    }
+    visiting.remove(&path);
+    Ok(exported)
+}
+
+fn program_declares(program: &Program, name: &str) -> bool {
+    program.structs.iter().any(|item| item.name == name)
+        || program.enums.iter().any(|item| item.name == name)
+        || program.functions.iter().any(|item| item.name == name)
+}
+
+fn validate_module_cycles(modules: &HashMap<PathBuf, Program>) -> Result<()> {
+    fn visit(
+        path: &Path,
+        modules: &HashMap<PathBuf, Program>,
+        visiting: &mut HashSet<PathBuf>,
+        visited: &mut HashSet<PathBuf>,
+    ) -> Result<()> {
+        if visited.contains(path) {
+            return Ok(());
+        }
+        if !visiting.insert(path.to_path_buf()) {
+            bail!(
+                "cyclic Rustify modules are not supported: {}",
+                path.display()
+            );
+        }
+        let program = modules
+            .get(path)
+            .ok_or_else(|| anyhow!("module {} was not loaded", path.display()))?;
+        for link in program.imports.iter().chain(&program.reexports) {
+            if link.source.starts_with('.') {
+                let target = resolve_import(path, &link.source)?.canonicalize()?;
+                visit(&target, modules, visiting, visited)?;
+            }
+        }
+        visiting.remove(path);
+        visited.insert(path.to_path_buf());
+        Ok(())
+    }
+
+    let mut visiting = HashSet::new();
+    let mut visited = HashSet::new();
+    for path in modules.keys() {
+        visit(path, modules, &mut visiting, &mut visited)?;
     }
     Ok(())
 }
@@ -306,6 +541,7 @@ fn append_program(target: &mut Program, mut module: Program) {
         .unsupported_top_level
         .extend(module.unsupported_top_level);
     target.imports.extend(module.imports);
+    target.reexports.extend(module.reexports);
     target.exports.extend(module.exports);
     target.structs.extend(module.structs);
     target.enums.extend(module.enums);
@@ -317,6 +553,7 @@ fn shift_spans(program: &mut Program, offset: usize) {
         .imports
         .iter_mut()
         .map(|item| &mut item.span)
+        .chain(program.reexports.iter_mut().map(|item| &mut item.span))
         .chain(program.unsupported_top_level.iter_mut())
         .chain(program.structs.iter_mut().map(|item| &mut item.span))
         .chain(program.enums.iter_mut().map(|item| &mut item.span))
@@ -372,17 +609,20 @@ fn compile(
         print_diagnostics(file, &source, &analysis.diagnostics);
         bail!("cannot compile invalid Rustify source");
     }
-    let rust = rustify_codegen_rust::emit(analysis.ir.as_ref().expect("valid analysis has IR"))?;
+    let workspace = analysis
+        .workspace
+        .as_ref()
+        .expect("valid workspace analysis has IR");
+    let rust = rustify_codegen_rust::emit_workspace(workspace)?;
     clean_fallback_artifacts(out)?;
     fs::create_dir_all(out)?;
     let target = if cargo_project {
         let src = out.join("src");
         fs::create_dir_all(&src)?;
-        let ir = analysis.ir.as_ref().expect("valid analysis has IR");
         let mut manifest = format!(
             "[workspace]\n\n[package]\nname = {package_name:?}\nversion = \"0.1.0\"\nedition = \"2024\"\n"
         );
-        if rustify_codegen_rust::uses_runtime(ir) {
+        if rustify_codegen_rust::workspace_uses_runtime(workspace) {
             manifest
                 .push_str("\n[dependencies]\nrustify-runtime = { path = \"rustify-runtime\" }\n");
             write_runtime_package(out)?;
@@ -540,7 +780,7 @@ fn collect_module_paths(entry: &Path) -> Result<Vec<PathBuf>> {
         }
         let source = fs::read_to_string(&path)?;
         let program = rustify_parser::parse(&source)?;
-        for import in &program.imports {
+        for import in program.imports.iter().chain(&program.reexports) {
             if import.source.starts_with('.') {
                 visit(&resolve_import(&path, &import.source)?, paths)?;
             }
@@ -660,14 +900,17 @@ fn explain(file: &Path, json: bool, mode: CompilationMode) -> Result<()> {
         print_diagnostics(file, &source, &analysis.diagnostics);
         bail!("cannot explain invalid Rustify source");
     }
-    let ir = analysis.ir.as_ref().expect("valid analysis has IR");
+    let workspace = analysis
+        .workspace
+        .as_ref()
+        .expect("valid workspace analysis has IR");
     if json {
-        println!("{}", serde_json::to_string_pretty(ir)?);
+        println!("{}", serde_json::to_string_pretty(workspace)?);
         return Ok(());
     }
     println!("Rustify translation plan for {}:", file.display());
-    println!("{}", rustify_codegen_rust::explain(ir));
-    println!("\n{}", rustify_codegen_rust::emit(ir)?);
+    println!("{}", rustify_codegen_rust::explain_workspace(workspace));
+    println!("\n{}", rustify_codegen_rust::emit_workspace(workspace)?);
     Ok(())
 }
 

@@ -1,4 +1,4 @@
-use rustify_analyzer::analyze;
+use rustify_analyzer::{analyze, validate_module_scope};
 use rustify_ir::{ExpressionKind, Statement, Type};
 
 #[test]
@@ -973,4 +973,29 @@ fn lowers_async_runtime_sleep_as_promise_void() {
         Statement::Expression(ref value)
             if value.ty == Type::Unit && matches!(value.kind, ExpressionKind::Await(_))
     ));
+}
+
+#[test]
+fn validates_module_bodies_against_only_visible_imports() {
+    let module = rustify_parser::parse(
+        "function hidden(): string { return \"hidden\" }\n\
+         export function publicValue(): string { return hidden() }\n",
+    )
+    .unwrap();
+    let importer = rustify_parser::parse(
+        "import { publicValue } from \"./module\"\n\
+         export function run(): string { return hidden() }\n",
+    )
+    .unwrap();
+    let mut visible = rustify_parser::parse("").unwrap();
+    visible.functions.push(module.functions[1].clone());
+
+    assert!(validate_module_scope(&module, &visible).is_empty());
+    let diagnostics = validate_module_scope(&importer, &visible);
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "SFT031"),
+        "{diagnostics:?}"
+    );
 }

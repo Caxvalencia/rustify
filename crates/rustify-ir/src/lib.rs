@@ -219,3 +219,32 @@ pub struct Program {
     pub enums: Vec<Enum>,
     pub functions: Vec<Function>,
 }
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModuleImport {
+    pub module: String,
+    pub types: Vec<ImportBinding>,
+    pub values: Vec<ImportBinding>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ImportBinding {
+    pub imported: String,
+    pub local: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Module {
+    pub name: String,
+    pub imports: Vec<ModuleImport>,
+    pub reexports: Vec<ModuleImport>,
+    pub exports: Vec<String>,
+    pub default_export: Option<String>,
+    pub program: Program,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Workspace {
+    pub entry: String,
+    pub modules: Vec<Module>,
+}

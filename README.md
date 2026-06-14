@@ -26,7 +26,12 @@ scaffold.
 - Native numeric `Math` helpers: `abs`, `floor`, `ceil`, `round`, `min`, `max`, and `pow`
 - Typed `if`/`else`, `while`, and `for...of` control flow with `break` and `continue`
 - Exhaustive return validation for every non-`void` function path
-- Relative named imports and exported declarations across `.ts` modules
+- Relative named and aliased imports, transitive named re-exports, and exported
+  declarations across isolated `.ts` modules
+- Named default function/type exports and default imports
+- Rust module emission with explicit imports, private declaration isolation, and safe
+  generated module identifiers
+- Explicit rejection of cyclic native module graphs
 - Enum variants, nullable values (`Some`/`None`), and `void` functions
 - Safe `Result<T, E>` values and JSON parsing/stringifying through `rustify-runtime`
 - Native `async` functions, `await`, and `Promise<T>` lowering to Rust futures
@@ -183,8 +188,9 @@ The language server provides diagnostics, Rust-target hovers, semantic tokens,
 workspace/document symbols, quick fixes, go-to-definition, references, and
 workspace rename across open documents and their relative imports. The VS Code
 preview command requests generated Rust directly from the LSP, including unsaved
-editor changes. LSP ranges use UTF-16 positions, and dynamic-type quick fixes are
-only offered when a concrete primitive type can be inferred safely.
+editor changes and isolated Rust modules. LSP ranges use UTF-16 positions, and
+dynamic-type quick fixes are only offered when a concrete primitive type can be
+inferred safely.
 
 Use the ESLint plugin with ESLint 9 flat config:
 

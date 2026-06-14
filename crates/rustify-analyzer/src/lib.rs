@@ -1,5 +1,5 @@
 use rustify_ir as ir;
-use rustify_parser::{Program, Span, Type};
+use rustify_parser::{ImportBinding, Program, Span, Type};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 
@@ -53,6 +53,7 @@ impl Diagnostic {
 pub struct Analysis {
     pub diagnostics: Vec<Diagnostic>,
     pub ir: Option<ir::Program>,
+    pub workspace: Option<ir::Workspace>,
 }
 
 impl Analysis {
@@ -77,7 +78,113 @@ pub fn analyze(program: &Program) -> Analysis {
     } else {
         Some(lower(program, &symbols))
     };
-    Analysis { diagnostics, ir }
+    Analysis {
+        diagnostics,
+        ir,
+        workspace: None,
+    }
+}
+
+pub fn validate_module_scope(program: &Program, imported: &Program) -> Vec<Diagnostic> {
+    analyze_module(program, imported)
+        .diagnostics
+        .into_iter()
+        .filter(|diagnostic| matches!(diagnostic.code, "SFT012" | "SFT030" | "SFT031" | "SFT036"))
+        .collect()
+}
+
+pub fn analyze_module(program: &Program, imported: &Program) -> Analysis {
+    let mut visible = program.clone();
+    visible.structs.extend(imported.structs.clone());
+    visible.enums.extend(imported.enums.clone());
+    visible.functions.extend(imported.functions.clone());
+
+    let mut diagnostics = validate_forbidden_syntax(&program.source);
+    let symbols = build_symbol_table(&visible, &mut diagnostics);
+    validate_declarations(program, &symbols, &mut diagnostics);
+    validate_function_bodies(program, &symbols, &mut diagnostics);
+    let ir = if diagnostics
+        .iter()
+        .any(|item| item.severity == Severity::Error)
+    {
+        None
+    } else {
+        Some(lower(program, &symbols))
+    };
+    Analysis {
+        diagnostics,
+        ir,
+        workspace: None,
+    }
+}
+
+pub fn add_imported_declarations(
+    target: &mut Program,
+    source: &Program,
+    bindings: &[ImportBinding],
+) {
+    let aliases: HashMap<_, _> = bindings
+        .iter()
+        .map(|binding| (binding.imported.as_str(), binding.local.as_str()))
+        .collect();
+    for binding in bindings {
+        if let Some(structure) = source
+            .structs
+            .iter()
+            .find(|item| item.name == binding.imported)
+        {
+            let mut structure = structure.clone();
+            structure.name = binding.local.clone();
+            for field in &mut structure.fields {
+                rename_imported_type(&mut field.ty, &aliases);
+            }
+            target.structs.push(structure);
+        }
+        if let Some(enumeration) = source
+            .enums
+            .iter()
+            .find(|item| item.name == binding.imported)
+        {
+            let mut enumeration = enumeration.clone();
+            enumeration.name = binding.local.clone();
+            target.enums.push(enumeration);
+        }
+        if let Some(function) = source
+            .functions
+            .iter()
+            .find(|item| item.name == binding.imported)
+        {
+            let mut function = function.clone();
+            function.name = binding.local.clone();
+            for parameter in &mut function.params {
+                if let Some(ty) = &mut parameter.ty {
+                    rename_imported_type(ty, &aliases);
+                }
+            }
+            if let Some(ty) = &mut function.return_type {
+                rename_imported_type(ty, &aliases);
+            }
+            target.functions.push(function);
+        }
+    }
+}
+
+fn rename_imported_type(ty: &mut Type, aliases: &HashMap<&str, &str>) {
+    match ty {
+        Type::Named(name) => {
+            if let Some(local) = aliases.get(name.as_str()) {
+                *name = (*local).to_owned();
+            }
+        }
+        Type::Array(inner) | Type::Optional(inner) | Type::Promise(inner) => {
+            rename_imported_type(inner, aliases);
+        }
+        Type::Result(ok, error) => {
+            rename_imported_type(ok, aliases);
+            rename_imported_type(error, aliases);
+        }
+        _ => {}
+    }
 }
 
 fn validate_forbidden_syntax(source: &str) -> Vec<Diagnostic> {
@@ -490,7 +597,7 @@ fn validate_declarations(
             *span,
         ));
     }
-    for import in &program.imports {
+    for import in program.imports.iter().chain(&program.reexports) {
         if !import.source.starts_with('.') {
             diagnostics.push(Diagnostic::error(
                 "SFT025",

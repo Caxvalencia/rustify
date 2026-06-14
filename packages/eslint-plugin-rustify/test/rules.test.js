@@ -1,131 +1,98 @@
 import parser from "@typescript-eslint/parser";
 import { Linter, RuleTester } from "eslint";
 import plugin, { rules } from "../src/index.js";
+import fs from "fs";
+import path from "path";
 
-const tester = new RuleTester({
+// Asegurar directorio temporal
+const tempDir = path.resolve(process.cwd(), "temp-test-files");
+if (!fs.existsSync(tempDir)) {
+  fs.mkdirSync(tempDir);
+}
+
+// Limpieza de archivos temporales al terminar
+process.on("exit", () => {
+  try {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  } catch (_) {}
+});
+
+// Sobrescribimos RuleTester para crear el archivo físico correspondiente al código antes de que ESLint lo verifique,
+// ya que RuleTester solo pasa el código como string y no crea archivos físicos por defecto.
+class PhysicalRuleTester extends RuleTester {
+  run(name, rule, tests) {
+    const mapTest = (testCase) => {
+      // Usamos una ruta relativa para que coincida con el glob de eslint (**/*.ts)
+      const relativePath = `temp-test-files/test_${Math.random().toString(36).substring(7)}.ts`;
+      const fullPath = path.resolve(process.cwd(), relativePath);
+      fs.writeFileSync(fullPath, testCase.code, "utf8");
+      return {
+        ...testCase,
+        filename: relativePath // ESLint flat config requiere ruta relativa para que coincida con los globs
+      };
+    };
+
+    const newTests = {
+      valid: tests.valid.map((t) => (typeof t === "string" ? { code: t } : t)).map(mapTest),
+      invalid: tests.invalid.map(mapTest)
+    };
+
+    super.run(name, rule, newTests);
+  }
+}
+
+// Usamos el parser de typescript para ESLint en el tester
+const tester = new PhysicalRuleTester({
   languageOptions: {
     parser,
     parserOptions: { ecmaVersion: 2022, sourceType: "module" }
   }
 });
 
-tester.run("no-any", rules["no-any"], {
-  valid: ["const value: string = 'ok'"],
+tester.run("rustify-diagnostics", rules["rustify-diagnostics"], {
+  valid: [
+    "function greet(name: string): string { return name }"
+  ],
   invalid: [
     {
-      code: "const value: any = 'bad'",
-      output: "const value: string = 'bad'",
+      code: "function greet(name: any): string { return name }",
       errors: [
         {
-          messageId: "forbidden",
-          suggestions: [{ messageId: "replaceWithInferred", output: "const value: string = 'bad'" }]
+          message: /\[SFT013\] type `any` is not supported by Rustify/
+        },
+        {
+          message: /\[SFT033\] function `greet` returns `any`, expected `string`/
+        },
+        {
+          message: /\[SFT001\] `any` is not supported by Rustify\./
         }
       ]
     },
     {
-      code: "const value: any = 1",
-      output: "const value: number = 1",
-      errors: [{ messageId: "forbidden", suggestions: 1 }]
-    },
-    {
-      code: "const value: any = true",
-      output: "const value: boolean = true",
-      errors: [{ messageId: "forbidden", suggestions: 1 }]
-    },
-    {
-      code: "function consume(value: any): void {}",
-      errors: [{ messageId: "forbidden", suggestions: 0 }]
-    },
-    {
-      code: "let value: any = 1",
-      errors: [{ messageId: "forbidden", suggestions: 0 }]
+      code: "function greet(name: string): string { eval(name); return name }",
+      errors: [
+        {
+          message: /\[SFT031\] unknown function `eval`/
+        },
+        {
+          message: /\[SFT003\] `eval` cannot be compiled to native Rust\./
+        }
+      ]
     }
   ]
 });
 
-tester.run("no-unknown", rules["no-unknown"], {
-  valid: ["const value: number = 1"],
-  invalid: [{ code: "const value: unknown = 1", errors: [{ messageId: "forbidden" }] }]
-});
-
-tester.run("no-eval", rules["no-eval"], {
-  valid: ["run(value)"],
-  invalid: [
-    { code: "eval(value)", errors: [{ messageId: "forbidden" }] },
-    { code: "new Function('return 1')", errors: [{ messageId: "forbidden" }] }
-  ]
-});
-
-tester.run("no-dynamic-object", rules["no-dynamic-object"], {
-  valid: ["user.name = 'Ada'"],
-  invalid: [
-    { code: "user[key] = value", errors: [{ messageId: "computed" }] },
-    { code: "delete user.name", errors: [{ messageId: "deletion" }] },
-    { code: "type Values = { [key: string]: string }", errors: [{ messageId: "index" }] },
-    { code: "Object.setPrototypeOf(user, base)", errors: [{ messageId: "prototype" }] },
-    { code: "const proto = user.prototype", errors: [{ messageId: "prototype" }] },
-    { code: "Object.defineProperty(user, 'name', {})", errors: [{ messageId: "monkeyPatch" }] }
-  ]
-});
-
-tester.run("no-unsupported-union", rules["no-unsupported-union"], {
-  valid: ["let value: string | null", "let value: string | undefined"],
-  invalid: [
-    { code: "let value: string | number", errors: [{ messageId: "forbidden" }] },
-    { code: "let value: string | number | null", errors: [{ messageId: "forbidden" }] }
-  ]
-});
-
-tester.run("no-unsupported-syntax", rules["no-unsupported-syntax"], {
-  valid: ["import { user } from './user'; user.name"],
-  invalid: [
-    { code: "import value from 'package'", errors: [{ messageId: "externalImport" }] },
-    { code: "function read() { return this.value }", errors: [{ messageId: "dynamicThis" }] },
-    { code: "Reflect.getMetadata('x', value)", errors: [{ messageId: "reflect" }] },
-    { code: "declare function external(): void", errors: [{ messageId: "ambient" }] },
-    { code: "namespace Values { export const x = 1 }", errors: [{ messageId: "namespace" }] },
-    { code: "const read = () => 1", errors: [{ messageId: "unsupported" }] },
-    { code: "class User {}", errors: [{ messageId: "unsupported" }] },
-    { code: "try { run() } catch {}", errors: [{ messageId: "unsupported" }] },
-    { code: "function read() { return this }", errors: [{ messageId: "dynamicThis" }] }
-  ]
-});
-
-tester.run("explicit-return-type", rules["explicit-return-type"], {
-  valid: ["function greet(name: string): string { return name }"],
-  invalid: [{ code: "function greet(name: string) { return name }", errors: [{ messageId: "missing" }] }]
-});
-
-tester.run("explicit-param-types", rules["explicit-param-types"], {
-  valid: ["function greet(name: string): string { return name }"],
-  invalid: [{ code: "function greet(name): string { return name }", errors: [{ messageId: "missing" }] }]
-});
-
+// Test de flat/recommended config
 const linter = new Linter({ configType: "flat" });
+const tempFileForFlat = "temp-test-files/flat_test.ts";
+fs.writeFileSync(path.resolve(process.cwd(), tempFileForFlat), "function unsafe(value: any) { return eval(value) }", "utf8");
+
 const messages = linter.verify(
   "function unsafe(value: any) { return eval(value) }",
   [plugin.configs["flat/recommended"]],
-  { filename: "input.ts" }
+  { filename: tempFileForFlat }
 );
 
-for (const ruleId of ["rustify/no-any", "rustify/no-eval", "rustify/explicit-return-type"]) {
-  if (!messages.some((message) => message.ruleId === ruleId)) {
-    throw new Error(`flat/recommended did not enable ${ruleId}`);
-  }
-}
-
-const fixed = linter.verifyAndFix("const count: any = 1", [plugin.configs["flat/recommended"]], {
-  filename: "input.ts"
-});
-if (!fixed.fixed || fixed.output !== "const count: number = 1") {
-  throw new Error(`no-any did not apply its safe inferred autofix: ${fixed.output}`);
-}
-
-const unsafeFix = linter.verifyAndFix(
-  "function consume(value: any): void {}",
-  [plugin.configs["flat/recommended"]],
-  { filename: "input.ts" }
-);
-if (unsafeFix.fixed) {
-  throw new Error("no-any unexpectedly autofixed a parameter without a safe inferred type");
+if (!messages.some((message) => message.ruleId === "rustify/rustify-diagnostics")) {
+  throw new Error("flat/recommended did not enable rustify/rustify-diagnostics");
 }

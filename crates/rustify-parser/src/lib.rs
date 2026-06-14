@@ -63,8 +63,14 @@ pub struct FunctionDecl {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ImportBinding {
+    pub imported: String,
+    pub local: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ImportDecl {
-    pub names: Vec<String>,
+    pub bindings: Vec<ImportBinding>,
     pub source: String,
     pub span: Span,
 }
@@ -74,7 +80,9 @@ pub struct Program {
     pub source: String,
     pub unsupported_top_level: Vec<Span>,
     pub imports: Vec<ImportDecl>,
+    pub reexports: Vec<ImportDecl>,
     pub exports: Vec<String>,
+    pub default_export: Option<String>,
     pub structs: Vec<StructDecl>,
     pub enums: Vec<EnumDecl>,
     pub functions: Vec<FunctionDecl>,
@@ -94,7 +102,9 @@ pub fn parse(source: &str) -> Result<Program, ParseError> {
         source: source.to_owned(),
         unsupported_top_level: Vec::new(),
         imports: Vec::new(),
+        reexports: Vec::new(),
         exports: Vec::new(),
+        default_export: None,
         structs: Vec::new(),
         enums: Vec::new(),
         functions: Vec::new(),
@@ -114,7 +124,27 @@ pub fn parse(source: &str) -> Result<Program, ParseError> {
         } else {
             cursor
         };
-        let (declaration_keyword, after_declaration_keyword) = next_word(source, declaration_start);
+        if exported && source.as_bytes().get(declaration_start) == Some(&b'{') {
+            let (declaration, end) = parse_import(source, start, declaration_start)?;
+            program.exports.extend(
+                declaration
+                    .bindings
+                    .iter()
+                    .map(|binding| binding.local.clone()),
+            );
+            program.reexports.push(declaration);
+            cursor = end;
+            continue;
+        }
+        let (mut declaration_keyword, mut after_declaration_keyword) =
+            next_word(source, declaration_start);
+        let default_exported = exported && declaration_keyword == "default";
+        if default_exported {
+            let default_declaration_start =
+                skip_space_and_comments(source, after_declaration_keyword);
+            (declaration_keyword, after_declaration_keyword) =
+                next_word(source, default_declaration_start);
+        }
         let (actual_keyword, after_keyword, is_async) = if declaration_keyword == "async" {
             let function_start = skip_space_and_comments(source, after_declaration_keyword);
             let (actual_keyword, after_keyword) = next_word(source, function_start);
@@ -133,7 +163,11 @@ pub fn parse(source: &str) -> Result<Program, ParseError> {
                 let (declaration, end) = parse_struct(source, start, after_keyword, false)?;
                 if let Some(declaration) = declaration {
                     if exported {
-                        program.exports.push(declaration.name.clone());
+                        if default_exported {
+                            program.default_export = Some(declaration.name.clone());
+                        } else {
+                            program.exports.push(declaration.name.clone());
+                        }
                     }
                     program.structs.push(declaration);
                 } else {
@@ -145,7 +179,11 @@ pub fn parse(source: &str) -> Result<Program, ParseError> {
                 let (declaration, end) = parse_struct(source, start, after_keyword, true)?;
                 if let Some(declaration) = declaration {
                     if exported {
-                        program.exports.push(declaration.name.clone());
+                        if default_exported {
+                            program.default_export = Some(declaration.name.clone());
+                        } else {
+                            program.exports.push(declaration.name.clone());
+                        }
                     }
                     program.structs.push(declaration);
                 }
@@ -154,7 +192,11 @@ pub fn parse(source: &str) -> Result<Program, ParseError> {
             "enum" => {
                 let (declaration, end) = parse_enum(source, start, after_keyword)?;
                 if exported {
-                    program.exports.push(declaration.name.clone());
+                    if default_exported {
+                        program.default_export = Some(declaration.name.clone());
+                    } else {
+                        program.exports.push(declaration.name.clone());
+                    }
                 }
                 program.enums.push(declaration);
                 cursor = end;
@@ -162,7 +204,11 @@ pub fn parse(source: &str) -> Result<Program, ParseError> {
             "function" => {
                 let (declaration, end) = parse_function(source, start, after_keyword, is_async)?;
                 if exported {
-                    program.exports.push(declaration.name.clone());
+                    if default_exported {
+                        program.default_export = Some(declaration.name.clone());
+                    } else {
+                        program.exports.push(declaration.name.clone());
+                    }
                 }
                 program.functions.push(declaration);
                 cursor = end;
@@ -184,22 +230,45 @@ fn parse_import(
     mut cursor: usize,
 ) -> Result<(ImportDecl, usize), ParseError> {
     cursor = skip_space_and_comments(source, cursor);
-    if source.as_bytes().get(cursor) != Some(&b'{') {
+    let bindings = if source.as_bytes().get(cursor) == Some(&b'{') {
+        let names_end = matching_delimiter(source, cursor, b'{', b'}')
+            .ok_or(ParseError::Declaration(cursor))?;
+        let bindings = split_top_level(&source[cursor + 1..names_end], &[','])
+            .into_iter()
+            .filter_map(|name| {
+                let name = name.trim();
+                if name.is_empty() {
+                    return None;
+                }
+                let (imported, local) = name
+                    .split_once(" as ")
+                    .map(|(imported, local)| (imported.trim(), local.trim()))
+                    .unwrap_or((name, name));
+                Some(ImportBinding {
+                    imported: imported.to_owned(),
+                    local: local.to_owned(),
+                })
+            })
+            .collect::<Vec<_>>();
+        cursor = skip_space_and_comments(source, names_end + 1);
+        bindings
+    } else {
+        let (local, after_local) = next_word(source, cursor);
+        if local.is_empty() {
+            return Err(ParseError::Declaration(cursor));
+        }
+        cursor = skip_space_and_comments(source, after_local);
+        vec![ImportBinding {
+            imported: "default".to_owned(),
+            local: local.to_owned(),
+        }]
+    };
+    if bindings
+        .iter()
+        .any(|binding| binding.imported.is_empty() || binding.local.is_empty())
+    {
         return Err(ParseError::Declaration(cursor));
     }
-    let names_end =
-        matching_delimiter(source, cursor, b'{', b'}').ok_or(ParseError::Declaration(cursor))?;
-    let names = split_top_level(&source[cursor + 1..names_end], &[','])
-        .into_iter()
-        .filter_map(|name| {
-            let name = name.trim();
-            (!name.is_empty()).then(|| name.to_owned())
-        })
-        .collect::<Vec<_>>();
-    if names.iter().any(|name| name.contains(" as ")) {
-        return Err(ParseError::Declaration(cursor));
-    }
-    cursor = skip_space_and_comments(source, names_end + 1);
     let (from, after_from) = next_word(source, cursor);
     if from != "from" {
         return Err(ParseError::Declaration(cursor));
@@ -222,7 +291,7 @@ fn parse_import(
         .unwrap_or(source_end + 1);
     Ok((
         ImportDecl {
-            names,
+            bindings,
             source: source[cursor + 1..source_end].to_owned(),
             span: Span { start, end },
         },
@@ -559,8 +628,11 @@ mod tests {
 
     #[test]
     fn parses_named_imports() {
-        let program = parse("import { User, greet } from \"./user\"\n").unwrap();
-        assert_eq!(program.imports[0].names, ["User", "greet"]);
+        let program = parse("import { User as Person, greet } from \"./user\"\n").unwrap();
+        assert_eq!(program.imports[0].bindings[0].imported, "User");
+        assert_eq!(program.imports[0].bindings[0].local, "Person");
+        assert_eq!(program.imports[0].bindings[1].imported, "greet");
+        assert_eq!(program.imports[0].bindings[1].local, "greet");
         assert_eq!(program.imports[0].source, "./user");
     }
 
@@ -569,6 +641,27 @@ mod tests {
         let program =
             parse("type Private = { value: string }\nexport function public(): void {}\n").unwrap();
         assert_eq!(program.exports, ["public"]);
+    }
+
+    #[test]
+    fn parses_named_reexports_with_aliases() {
+        let program = parse("export { User, greet as welcome } from \"./user\"\n").unwrap();
+        assert_eq!(program.exports, ["User", "welcome"]);
+        assert_eq!(program.reexports[0].bindings[0].imported, "User");
+        assert_eq!(program.reexports[0].bindings[1].imported, "greet");
+        assert_eq!(program.reexports[0].bindings[1].local, "welcome");
+    }
+
+    #[test]
+    fn parses_default_exports_and_imports() {
+        let exported =
+            parse("export default function greet(): string { return \"hi\" }\n").unwrap();
+        assert_eq!(exported.default_export.as_deref(), Some("greet"));
+        assert!(exported.exports.is_empty());
+
+        let imported = parse("import welcome from \"./greet\"\n").unwrap();
+        assert_eq!(imported.imports[0].bindings[0].imported, "default");
+        assert_eq!(imported.imports[0].bindings[0].local, "welcome");
     }
 
     #[test]
