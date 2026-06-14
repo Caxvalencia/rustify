@@ -1,0 +1,18 @@
+[package]
+name = "rustify-playground"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "rustify-playground"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+axum.workspace = true
+rustify-analyzer = { path = "../rustify-analyzer" }
+rustify-codegen-rust = { path = "../rustify-codegen-rust" }
+rustify-parser = { path = "../rustify-parser" }
+serde.workspace = true
+tokio = { version = "1", features = ["macros", "net", "rt-multi-thread"] }

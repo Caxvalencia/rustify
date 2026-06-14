@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Rustify Playground</title>
+  <style>
+    :root { color-scheme: dark; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #0c1017; color: #d9e2f2; }
+    header { display: flex; align-items: center; gap: 18px; padding: 18px 24px; border-bottom: 1px solid #283244; }
+    h1 { margin: 0; font-size: 18px; }
+    header span { color: #8da2bf; font-size: 13px; }
+    button { margin-left: auto; border: 0; border-radius: 7px; padding: 9px 16px; background: #ff7a45; color: #17120f; font-weight: 700; cursor: pointer; }
+    main { display: grid; grid-template-columns: 1fr 1fr; min-height: calc(100vh - 65px); }
+    section { min-width: 0; display: flex; flex-direction: column; }
+    section + section { border-left: 1px solid #283244; }
+    label { padding: 12px 16px; color: #8da2bf; border-bottom: 1px solid #283244; font-size: 12px; text-transform: uppercase; letter-spacing: .08em; }
+    textarea, pre { flex: 1; width: 100%; margin: 0; border: 0; padding: 18px; background: transparent; color: inherit; font: inherit; font-size: 14px; line-height: 1.55; resize: none; outline: none; overflow: auto; }
+    #status { padding: 10px 16px; min-height: 39px; border-top: 1px solid #283244; color: #74d59b; font-size: 12px; white-space: pre-wrap; }
+    #status.error { color: #ff8c8c; }
+    @media (max-width: 800px) { main { grid-template-columns: 1fr; } section + section { border-left: 0; border-top: 1px solid #283244; } }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Rustify Playground</h1>
+    <span>Strict TypeScript → readable Rust</span>
+    <button id="compile">Compile</button>
+  </header>
+  <main>
+    <section>
+      <label for="source">Rustify TypeScript</label>
+      <textarea id="source" spellcheck="false"></textarea>
+      <div id="status">Loading example…</div>
+    </section>
+    <section>
+      <label for="output">Generated Rust</label>
+      <pre id="output"></pre>
+    </section>
+  </main>
+  <script>
+    const source = document.querySelector("#source");
+    const output = document.querySelector("#output");
+    const status = document.querySelector("#status");
+    let timer;
+
+    async function compile() {
+      status.textContent = "Compiling…";
+      status.className = "";
+      const response = await fetch("/api/compile", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ source: source.value })
+      });
+      const result = await response.json();
+      output.textContent = result.rust ?? "";
+      if (result.valid) {
+        status.textContent = "Native Rustify compilation passed.";
+      } else {
+        status.className = "error";
+        status.textContent = result.diagnostics
+          .map((item) => `[${item.code}] ${item.message}${item.hint ? `\nHint: ${item.hint}` : ""}`)
+          .join("\n\n");
+      }
+    }
+
+    source.addEventListener("input", () => {
+      clearTimeout(timer);
+      timer = setTimeout(compile, 250);
+    });
+    document.querySelector("#compile").addEventListener("click", compile);
+
+    fetch("/api/example")
+      .then((response) => response.text())
+      .then((example) => { source.value = example; return compile(); })
+      .catch((error) => { status.className = "error"; status.textContent = error; });
+  </script>
+</body>
+</html>
