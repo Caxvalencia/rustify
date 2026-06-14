@@ -1,14 +1,29 @@
-# Rustify - Documentación Oficial
+# Rustify — Documentación Oficial
 
 Bienvenido a la documentación oficial de **Rustify**, un compilador diseñado para transpilar un subconjunto estricto de TypeScript en código Rust seguro, rápido y legible.
 
-## Índice de Documentación
+---
+
+## Índice de Componentes
+
+A continuación se muestra el desglose de guías detalladas para cada una de las herramientas que componen el ecosistema de Rustify. Haz clic en el icono o en el enlace correspondiente para abrir la documentación:
+
+| Herramienta | Icono | Descripción | Enlace |
+| :--- | :---: | :--- | :--- |
+| **CLI & Compilador** | <img src="../assets/icon-cli.png" width="48" height="48" /> | Compilador principal de terminal para chequear, explicar y transpilar código. | [Guía de CLI](./cli.md) |
+| **Language Server (LSP)** | <img src="../assets/icon-lsp.png" width="48" height="48" /> | Servidor LSP para análisis inline, hovers de firmas Rust y navegación semántica. | [Guía de LSP](./lsp.md) |
+| **Plugin de ESLint** | <img src="../assets/icon-eslint.png" width="48" height="48" /> | Linter estático para proyectos Node.js integrado con las reglas del compilador. | [Guía de ESLint](./eslint.md) |
+| **Extensión de VS Code** | <img src="../assets/icon-vscode.png" width="48" height="48" /> | Extensión que gestiona el LSP y permite ver la previsualización de Rust en paralelo. | [Guía de VS Code](./vscode.md) |
+| **Playground Web** | <img src="../assets/icon-playground.png" width="48" height="48" /> | Sandbox web interactivo para experimentar y previsualizar la compilación online. | [Guía de Playground](./playground.md) |
+| **Bridge Híbrido** | <img src="../assets/logo.png" width="48" height="48" /> | Interoperabilidad síncrona nativo-JS por IPC y stdio para tipos complejos. | [Guía de Bridge Híbrido](./hybrid.md) |
+
+---
+
+## Índice Temático General
 
 1. [Guía de Inicio Rápido (Quickstart)](#cómo-iniciar-quickstart)
-2. [Arquitectura del Compilador](./architecture.md)
-3. [Guía de la Interfaz de Línea de Comandos (CLI)](./cli.md)
-4. [Herramientas de Desarrollo (LSP, ESLint, VSCode)](./tooling.md)
-5. [Bridge de Interoperabilidad Híbrida](./hybrid.md)
+2. [Arquitectura Interna del Compilador](./architecture.md)
+3. [Bridge de Interoperabilidad Híbrida](./hybrid.md)
 
 ---
 
@@ -18,12 +33,12 @@ Bienvenido a la documentación oficial de **Rustify**, un compilador diseñado p
 
 Asegúrate de tener instalados los siguientes componentes:
 
-- [Rust & Cargo](https://rustup.rs/) (edición 2024 soportada)
-- [Node.js](https://nodejs.org/) (versión >= 20 para herramientas de linter)
+* [Rust & Cargo](https://rustup.rs/) (edición 2024 soportada)
+* [Node.js](https://nodejs.org/) (versión >= 20 para herramientas de linter)
 
 ### 1. Clonar y Compilar el Proyecto
 
-Puedes compilar el proyecto localmente utilizando el `Makefile` provisto:
+Puedes compilar el proyecto localmente utilizando el `Makefile` provisto en la raíz:
 
 * **Modo Desarrollo (Debug):**
   ```bash
@@ -34,11 +49,11 @@ Puedes compilar el proyecto localmente utilizando el `Makefile` provisto:
   make build-release
   ```
 
-El binario ejecutable compilado se encontrará en `target/debug/rustify-cli` (para desarrollo) o `target/release/rustify-cli` (para producción).
+El binario ejecutable compilado se encontrará en `target/debug/rustify` (para desarrollo) o `target/release/rustify` (para producción).
 
-### Compilación y Uso con Podman
+### Compilación y Uso con Podman / Docker
 
-Si prefieres no instalar herramientas locales, puedes construir y ejecutar Rustify dentro de un contenedor usando Podman:
+Si prefieres no instalar herramientas locales, puedes construir y ejecutar Rustify dentro de un contenedor:
 
 1. **Construir la imagen:**
    ```bash

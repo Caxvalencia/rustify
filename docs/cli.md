@@ -1,76 +1,105 @@
-# Interfaz de Línea de Comandos (CLI)
+# Interfaz de Línea de Comandos (CLI) — Rustify
 
-El crate `rustify-cli` provee la herramienta ejecutable para interactuar con el compilador.
+<p align="center">
+  <img src="../assets/icon-cli.png" alt="Rustify CLI Icon" width="160" />
+</p>
+
+El módulo `rustify-cli` provee la herramienta principal por línea de comandos para compilar, verificar e interactuar con el compilador de Rustify. Procesa el código fuente TypeScript estricto y genera código Rust ejecutable de forma instantánea.
+
+---
+
+## Instalación y Construcción
+
+Para compilar el binario de la CLI localmente, asegúrate de tener instalado Rust (edición 2024). Ejecuta el siguiente comando en el directorio raíz del proyecto:
+
+```bash
+make build-release
+```
+
+El ejecutable compilado estará disponible en:
+```bash
+./target/release/rustify
+```
+
+O si utilizas Cargo directamente:
+```bash
+cargo run --package rustify-cli -- [opciones] [comando]
+```
+
+---
 
 ## Comandos Disponibles
 
 ### 1. `check`
-Verifica un archivo de TypeScript contra el subconjunto de reglas de Rustify.
+Verifica si uno o más archivos de TypeScript cumplen con el subconjunto estricto de Rustify.
 
 ```bash
 rustify check src/main.ts
 ```
 
-Opciones:
-- `--json`: Retorna los diagnósticos encontrados en un formato estructurado JSON. Muy útil para herramientas de linter e integración en editores.
+* **Salida Estándar**: Si el código es válido, no reporta errores. Si infringe las reglas (como el uso de `any` sin `@hybrid`, variables dinámicas o `eval`), imprime diagnósticos estilizados detallando la línea exacta y sugerencias de corrección.
+* **Opciones**:
+  * `--json`: Imprime todos los diagnósticos encontrados en un objeto estructurado JSON en la salida estándar. Esta opción es la que consumen las herramientas de análisis estático (como el plugin de ESLint).
 
 ---
 
 ### 2. `explain`
-Muestra el plan de compilación para un archivo TypeScript. Imprime las firmas Rust detectadas, cómo se traducirá cada sentencia y el código Rust resultante.
+Muestra el plan de compilación detallado para un archivo TypeScript.
 
 ```bash
 rustify explain src/main.ts
 ```
 
-Opciones:
-- `--json`: Imprime la representación intermedia (IR) tipada completa en formato JSON.
+* **Utilidad**: Imprime en consola un desglose de las declaraciones de tipo reconocidas, cómo se traducirá cada sentencia y el código Rust resultante formateado.
+* **Opciones**:
+  * `--json`: Retorna toda la Representación Intermedia (IR) tipada y resuelta del compilador en formato JSON.
 
 ---
 
 ### 3. `compile`
-Transpila el código fuente TypeScript a Rust.
+Transpila el código fuente TypeScript a Rust nativo.
 
 ```bash
 rustify compile src/main.ts --out dist-rust
 ```
 
-Opciones:
-- `--cargo`: Crea un proyecto Cargo completo con una estructura estándar, incluyendo `Cargo.toml` y empaquetando el runtime `rustify-runtime` si se utiliza JSON o timers asíncronos.
-- `--no-cargo`: Genera un único archivo de código Rust `.rs` sin envolverlo en un proyecto Cargo.
-- `--mode <hybrid|native>`: Elige el modo de compilación (ver sección "Modo Híbrido").
+* **Opciones**:
+  * `--cargo`: (Recomendado) Envuelve el código generado en un proyecto Cargo estándar completo (crea `Cargo.toml`, estructura `src/main.rs`, y añade dependencias automáticas como `rustify-runtime` si utilizas timers asíncronos o APIs JSON).
+  * `--no-cargo`: Genera un único archivo de código Rust `.rs` aislado sin crear directorios adicionales de configuración.
+  * `--mode <hybrid|native>`: Controla la política de compatibilidad. Por defecto es `native`. Si se configura en `hybrid`, permite la presencia de funciones marcadas con `/** @hybrid */` delegando su ejecución a Node.js en tiempo de ejecución.
 
 ---
 
 ### 4. `init`
-Inicializa un nuevo proyecto Rustify en el directorio especificado, creando una plantilla de configuración `rustify.json` y el directorio de fuentes inicial.
+Inicializa un proyecto estructurado de Rustify en el directorio provisto.
 
 ```bash
-rustify init my-project
+rustify init mi-proyecto-rustify
 ```
+
+Crea la siguiente estructura de archivos iniciales:
+* `rustify.json` (Archivo de configuración global)
+* `src/main.ts` (Archivo de entrada del código)
+* `.gitignore` (Configuración de control de versiones)
 
 ---
 
 ## Configuración del Proyecto (`rustify.json`)
 
-En lugar de especificar argumentos en la CLI cada vez, puedes definir un archivo `rustify.json` en la raíz de tu proyecto:
+Para evitar pasar los argumentos a la CLI en cada invocación, puedes configurar las opciones por defecto en un archivo `rustify.json` en la raíz de tu proyecto:
 
 ```json
 {
   "entry": "src/main.ts",
   "out": "dist-rust",
   "cargo": true,
-  "package_name": "my-rustify-app",
+  "package_name": "mi-proyecto-rustify",
   "mode": "native"
 }
 ```
 
----
-
-## Modo Híbrido
-
-Cuando el compilador se ejecuta en el modo híbrido (`--mode hybrid` o `"mode": "hybrid"` en `rustify.json`), se habilita la compilación nativa en Rust combinada con delegación dinámica a Node.js:
-1. **Detección por Función**: El compilador analiza las funciones y detecta aquellas marcadas con la anotación javadoc `/** @hybrid */`.
-2. **Ignorado de Diagnósticos**: En las funciones híbridas, el type-checker ignora tipos dinámicos o incompatibles (como `any`) en lugar de generar errores fatales que detengan la compilación nativa.
-3. **Generación de Código**: El cuerpo de estas funciones se traduce en Rust a una llamada síncrona IPC/JSON (`rustify_runtime::call_js_fallback(...)`) hacia Node.js en tiempo de ejecución.
-4. **Copia de Fuentes**: El compilador copia de forma transparente todos los archivos TypeScript originales al directorio `fallback/` en el directorio de salida para que Node.js los cargue dinámicamente usando `--experimental-transform-types`.
+Si ejecutas los comandos sin parámetros dentro de un directorio con este archivo, la CLI lo resolverá automáticamente:
+```bash
+rustify compile
+rustify check
+```

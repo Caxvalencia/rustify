@@ -164,36 +164,20 @@ Project configuration:
 }
 ```
 
-Run the language server with:
+## Ecosystem & Tools
 
-```bash
-cargo run -p rustify-lsp
-```
+Rustify features a complete developer ecosystem consisting of multiple specialized tools. Explore the detailed documentation for each component below:
 
-Run the local playground with:
+| Tool | Icon | Description | Guide |
+| :--- | :---: | :--- | :--- |
+| **CLI & Compiler** | <img src="assets/icon-cli.png" width="40" height="40" /> | Transpile TypeScript into safe, warning-free Rust. | [CLI Guide](docs/cli.md) |
+| **Language Server (LSP)** | <img src="assets/icon-lsp.png" width="40" height="40" /> | Real-time diagnostics, Rust-equivalent hovers, and semantic navigation. | [LSP Guide](docs/lsp.md) |
+| **ESLint Plugin** | <img src="assets/icon-eslint.png" width="40" height="40" /> | Static compatibility checks built directly into Node.js tools. | [ESLint Guide](docs/eslint.md) |
+| **VS Code Extension** | <img src="assets/icon-vscode.png" width="40" height="40" /> | Native editor integration with real-time translation preview panels. | [VS Code Guide](docs/vscode.md) |
+| **Interactive Playground** | <img src="assets/icon-playground.png" width="40" height="40" /> | Web-based editor sandbox to experiment with compilation directly. | [Playground Guide](docs/playground.md) |
 
-```bash
-cargo run -p rustify-playground
-```
+For further details on how the compiler works under the hood and how to leverage the hybrid IPC bridge, please read the [Architecture Guide](docs/architecture.md) and [Hybrid Interoperability Bridge Guide](docs/hybrid.md).
 
-Then open `http://127.0.0.1:3000`. The playground uses the same parser, analyzer,
-diagnostics, typed IR, and Rust code generator as the CLI and LSP.
-
-The language server provides diagnostics, Rust-target hovers, semantic tokens,
-workspace/document symbols, quick fixes, go-to-definition, references, and
-workspace rename across open documents and their relative imports. The VS Code
-preview command requests generated Rust directly from the LSP, including unsaved
-editor changes and isolated Rust modules. LSP ranges use UTF-16 positions, and
-dynamic-type quick fixes are only offered when a concrete primitive type can be
-inferred safely.
-
-Use the ESLint plugin with ESLint 9 flat config:
-
-```js
-import rustify from "eslint-plugin-rustify";
-
-export default [rustify.configs["flat/recommended"]];
-```
 
 ## Architecture
 
