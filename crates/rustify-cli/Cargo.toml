@@ -14,5 +14,5 @@ clap.workspace = true
 rustify-analyzer = { path = "../rustify-analyzer" }
 rustify-codegen-rust = { path = "../rustify-codegen-rust" }
 rustify-parser = { path = "../rustify-parser" }
+serde.workspace = true
 serde_json.workspace = true
-
