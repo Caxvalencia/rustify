@@ -8,6 +8,7 @@ Bienvenido a la documentación oficial de **Rustify**, un compilador diseñado p
 2. [Arquitectura del Compilador](./architecture.md)
 3. [Guía de la Interfaz de Línea de Comandos (CLI)](./cli.md)
 4. [Herramientas de Desarrollo (LSP, ESLint, VSCode)](./tooling.md)
+5. [Bridge de Interoperabilidad Híbrida](./hybrid.md)
 
 ---
 

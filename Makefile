@@ -39,6 +39,7 @@ bench:
 
 # Empaquetar artefactos para distribución
 package:
+	./scripts/verify-versions.sh
 	./scripts/package-all.sh
 
 # Limpiar compilación
