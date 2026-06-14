@@ -718,3 +718,49 @@ fn invalid_project_config_is_rejected() {
     assert!(String::from_utf8_lossy(&output.stderr).contains("invalid Rustify config"));
     let _ = std::fs::remove_dir_all(directory);
 }
+
+#[test]
+fn hybrid_bridge_interoperability_compiles() {
+    let directory = temporary_project("hybrid-bridge");
+    let _ = std::fs::remove_dir_all(&directory);
+    std::fs::create_dir_all(directory.join("src")).unwrap();
+    std::fs::write(
+        directory.join("src/main.ts"),
+        r#"
+export function add(a: number, b: number): number {
+  return a + b;
+}
+
+/** @hybrid */
+export function greet_dynamic(user: any): string {
+  return "Hello " + user.name;
+}
+"#,
+    )
+    .unwrap();
+    std::fs::write(
+        directory.join("rustify.json"),
+        r#"{ "entry": "src/main.ts", "out": "dist", "cargo": true, "package_name": "hybrid-bridge", "mode": "hybrid" }"#,
+    )
+    .unwrap();
+    let compile = Command::new(env!("CARGO_BIN_EXE_rustify"))
+        .arg("compile")
+        .current_dir(&directory)
+        .output()
+        .unwrap();
+    assert!(
+        compile.status.success(),
+        "{}",
+        String::from_utf8_lossy(&compile.stderr)
+    );
+
+    // Validar que se haya copiado el archivo TS original a fallback/
+    assert!(directory.join("dist/fallback/src/main.ts").is_file());
+
+    // Validar que el código de Rust generado contenga la llamada a call_js_fallback
+    let rust_code = std::fs::read_to_string(directory.join("dist/src/lib.rs")).unwrap();
+    assert!(rust_code.contains("rustify_runtime::call_js_fallback"));
+    assert!(rust_code.contains("greet_dynamic"));
+
+    let _ = std::fs::remove_dir_all(directory);
+}

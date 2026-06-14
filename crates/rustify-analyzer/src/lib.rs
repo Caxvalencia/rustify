@@ -67,6 +67,7 @@ impl Analysis {
 
 pub fn analyze(program: &Program) -> Analysis {
     let mut diagnostics = validate_forbidden_syntax(&program.source);
+    filter_hybrid_diagnostics(&mut diagnostics, program);
     let symbols = build_symbol_table(program, &mut diagnostics);
     validate_declarations(program, &symbols, &mut diagnostics);
     validate_function_bodies(program, &symbols, &mut diagnostics);
@@ -100,6 +101,7 @@ pub fn analyze_module(program: &Program, imported: &Program) -> Analysis {
     visible.functions.extend(imported.functions.clone());
 
     let mut diagnostics = validate_forbidden_syntax(&program.source);
+    filter_hybrid_diagnostics(&mut diagnostics, program);
     let symbols = build_symbol_table(&visible, &mut diagnostics);
     validate_declarations(program, &symbols, &mut diagnostics);
     validate_function_bodies(program, &symbols, &mut diagnostics);
@@ -116,6 +118,20 @@ pub fn analyze_module(program: &Program, imported: &Program) -> Analysis {
         ir,
         workspace: None,
     }
+}
+
+fn filter_hybrid_diagnostics(diagnostics: &mut Vec<Diagnostic>, program: &Program) {
+    let hybrid_spans: Vec<_> = program
+        .functions
+        .iter()
+        .filter(|f| f.is_hybrid)
+        .map(|f| f.span)
+        .collect();
+    diagnostics.retain(|diagnostic| {
+        !hybrid_spans
+            .iter()
+            .any(|span| diagnostic.span.start >= span.start && diagnostic.span.end <= span.end)
+    });
 }
 
 pub fn add_imported_declarations(
@@ -649,7 +665,9 @@ fn validate_declarations(
             }
             match &parameter.ty {
                 Some(ty) => {
-                    validate_type(ty, function.span, symbols, diagnostics);
+                    if !function.is_hybrid || !matches!(ty, Type::Unsupported(_)) {
+                        validate_type(ty, function.span, symbols, diagnostics);
+                    }
                     if type_contains_promise(ty) && !is_direct_promise(ty) {
                         diagnostics.push(Diagnostic::error(
                             "SFT060",
@@ -672,7 +690,9 @@ fn validate_declarations(
         }
         match &function.return_type {
             Some(ty) => {
-                validate_type(ty, function.span, symbols, diagnostics);
+                if !function.is_hybrid || !matches!(ty, Type::Unsupported(_)) {
+                    validate_type(ty, function.span, symbols, diagnostics);
+                }
                 if type_contains_promise(ty) && !is_direct_promise(ty) {
                     diagnostics.push(Diagnostic::error(
                         "SFT060",
@@ -727,6 +747,9 @@ fn validate_function_bodies(
     diagnostics: &mut Vec<Diagnostic>,
 ) {
     for function in &program.functions {
+        if function.is_hybrid {
+            continue;
+        }
         if !function.is_async && contains_await(&function.body) {
             diagnostics.push(Diagnostic::error(
                 "SFT044",
@@ -2553,13 +2576,20 @@ fn lower_function(function: &rustify_parser::FunctionDecl, symbols: &SymbolTable
             function_return_value_type(function).expect("validated return type"),
         ),
         body: {
-            let mut body = lower_body(&function.body, symbols, &mut locals);
-            coerce_returns(
-                &mut body,
-                &lower_type(function_return_value_type(function).expect("validated return type")),
-            );
-            body
+            if function.is_hybrid {
+                Vec::new()
+            } else {
+                let mut body = lower_body(&function.body, symbols, &mut locals);
+                coerce_returns(
+                    &mut body,
+                    &lower_type(
+                        function_return_value_type(function).expect("validated return type"),
+                    ),
+                );
+                body
+            }
         },
+        is_hybrid: function.is_hybrid,
     }
 }
 
@@ -3092,7 +3122,7 @@ fn lower_type(ty: &Type) -> ir::Type {
             ir::Type::Result(Box::new(lower_type(ok)), Box::new(lower_type(error)))
         }
         Type::Promise(inner) => ir::Type::Promise(Box::new(lower_type(inner))),
-        Type::Unsupported(name) => panic!("unsupported type `{name}` passed validation"),
+        Type::Unsupported(_) => ir::Type::JsonValue,
     }
 }
 

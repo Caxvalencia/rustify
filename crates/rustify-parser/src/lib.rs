@@ -60,6 +60,8 @@ pub struct FunctionDecl {
     pub return_type: Option<Type>,
     pub body: String,
     pub span: Span,
+    #[serde(default)]
+    pub is_hybrid: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -433,6 +435,9 @@ fn parse_function(
     cursor = skip_space_and_comments(source, cursor);
     let body_end =
         matching_delimiter(source, cursor, b'{', b'}').ok_or(ParseError::Declaration(cursor))?;
+    let search_limit = start.saturating_sub(200);
+    let is_hybrid = source[search_limit..start].contains("@hybrid");
+
     Ok((
         FunctionDecl {
             name: name.to_owned(),
@@ -444,6 +449,7 @@ fn parse_function(
                 start,
                 end: body_end + 1,
             },
+            is_hybrid,
         },
         body_end + 1,
     ))

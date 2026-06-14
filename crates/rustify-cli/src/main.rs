@@ -225,6 +225,10 @@ fn load(file: &Path) -> Result<(String, Program, rustify_analyzer::Analysis)> {
     let mut diagnostics = Vec::new();
     let mut ir_modules = Vec::new();
     let mut valid = true;
+    let project_root = find_config(file)
+        .and_then(|config| config.parent().map(|p| p.to_path_buf()))
+        .unwrap_or_else(|| file.parent().unwrap_or(Path::new(".")).to_path_buf());
+
     for path in &paths {
         let program = modules.get(path).expect("known module");
         let visible = visible_imports(path, program, &modules)?;
@@ -241,6 +245,11 @@ fn load(file: &Path) -> Result<(String, Program, rustify_analyzer::Analysis)> {
                 }),
         );
         if let Some(ir) = module_analysis.ir {
+            let relative_path = path
+                .strip_prefix(&project_root)
+                .unwrap_or(path)
+                .to_string_lossy()
+                .into_owned();
             ir_modules.push(Module {
                 name: module_names.get(path).expect("known module name").clone(),
                 imports: module_imports(path, &program.imports, &modules, &module_names)?,
@@ -248,6 +257,7 @@ fn load(file: &Path) -> Result<(String, Program, rustify_analyzer::Analysis)> {
                 exports: program.exports.clone(),
                 default_export: program.default_export.clone(),
                 program: ir,
+                source_path: relative_path,
             });
         } else {
             valid = false;
@@ -638,6 +648,39 @@ fn compile(
         .args(["--edition", "2024"])
         .arg(&target)
         .status();
+
+    let has_hybrid_functions = workspace.modules.iter().any(|module| {
+        module
+            .program
+            .functions
+            .iter()
+            .any(|function| function.is_hybrid)
+    });
+
+    if matches!(mode, CompilationMode::Hybrid) && has_hybrid_functions {
+        let project_root_canonical = project_root.canonicalize()?;
+        let modules = collect_module_paths(file)
+            .or_else(|_| collect_project_typescript_paths(&project_root_canonical, out))?;
+        let fallback = out.join("fallback");
+        fs::create_dir_all(&fallback)?;
+        for module in modules {
+            let relative = module
+                .strip_prefix(&project_root_canonical)
+                .with_context(|| {
+                    format!(
+                        "hybrid module {} is outside project root {}",
+                        module.display(),
+                        project_root_canonical.display()
+                    )
+                })?;
+            let target_file = fallback.join(relative);
+            if let Some(parent) = target_file.parent() {
+                fs::create_dir_all(parent)?;
+            }
+            fs::copy(&module, target_file)?;
+        }
+    }
+
     if matches!(mode, CompilationMode::Hybrid) {
         write_hybrid_manifest(
             out,

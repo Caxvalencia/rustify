@@ -81,6 +81,10 @@ fn analyze_lsp_workspace(
     let mut entry_diagnostics = Vec::new();
     let mut ir_modules = Vec::new();
     let mut valid = true;
+    let project_root = find_config(&entry)
+        .and_then(|config| config.parent().map(|p| p.to_path_buf()))
+        .unwrap_or_else(|| entry.parent().unwrap_or(Path::new(".")).to_path_buf());
+
     for path in &paths {
         let program = modules.get(path).expect("known LSP module");
         let visible = lsp_visible_imports(path, program, &modules)?;
@@ -90,6 +94,11 @@ fn analyze_lsp_workspace(
         }
         diagnostics.extend(analysis.diagnostics);
         if let Some(ir) = analysis.ir {
+            let relative_path = path
+                .strip_prefix(&project_root)
+                .unwrap_or(path)
+                .to_string_lossy()
+                .into_owned();
             ir_modules.push(Module {
                 name: names.get(path).expect("known LSP module name").clone(),
                 imports: lsp_module_imports(path, &program.imports, &modules, &names)?,
@@ -97,6 +106,7 @@ fn analyze_lsp_workspace(
                 exports: program.exports.clone(),
                 default_export: program.default_export.clone(),
                 program: ir,
+                source_path: relative_path,
             });
         } else {
             valid = false;
@@ -1188,6 +1198,13 @@ async fn main() {
         documents: RwLock::new(HashMap::new()),
     });
     Server::new(stdin, stdout, socket).serve(service).await;
+}
+
+fn find_config(start: &Path) -> Option<PathBuf> {
+    start
+        .ancestors()
+        .map(|directory| directory.join("rustify.json"))
+        .find(|candidate| candidate.is_file())
 }
 
 #[cfg(test)]

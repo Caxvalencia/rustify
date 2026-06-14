@@ -211,6 +211,8 @@ pub struct Function {
     pub params: Vec<Parameter>,
     pub return_type: Type,
     pub body: Vec<Statement>,
+    #[serde(default)]
+    pub is_hybrid: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
@@ -241,6 +243,8 @@ pub struct Module {
     pub exports: Vec<String>,
     pub default_export: Option<String>,
     pub program: Program,
+    #[serde(default)]
+    pub source_path: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
