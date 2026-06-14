@@ -16,6 +16,7 @@ A continuación se muestra el desglose de guías detalladas para cada una de las
 | **Extensión de VS Code** | <img src="../assets/icon-vscode.png" width="48" height="48" /> | Extensión que gestiona el LSP y permite ver la previsualización de Rust en paralelo. | [Guía de VS Code](./vscode.md) |
 | **Playground Web** | <img src="../assets/icon-playground.png" width="48" height="48" /> | Sandbox web interactivo para experimentar y previsualizar la compilación online. | [Guía de Playground](./playground.md) |
 | **Bridge Híbrido** | <img src="../assets/logo.png" width="48" height="48" /> | Interoperabilidad síncrona nativo-JS por IPC y stdio para tipos complejos. | [Guía de Bridge Híbrido](./hybrid.md) |
+| **Patrón Globals** | <img src="../assets/logo.png" width="48" height="48" /> | Guía y buenas prácticas para declarar variables y constantes globales de forma nativa. | [Guía de Globals](./globals.md) |
 
 ---
 
@@ -24,6 +25,7 @@ A continuación se muestra el desglose de guías detalladas para cada una de las
 1. [Guía de Inicio Rápido (Quickstart)](#cómo-iniciar-quickstart)
 2. [Arquitectura Interna del Compilador](./architecture.md)
 3. [Bridge de Interoperabilidad Híbrida](./hybrid.md)
+4. [Gestión de Variables Globales (Patrón Globals)](./globals.md)
 
 ---
 

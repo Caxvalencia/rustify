@@ -175,8 +175,9 @@ Rustify features a complete developer ecosystem consisting of multiple specializ
 | **ESLint Plugin** | <img src="assets/icon-eslint.png" width="40" height="40" /> | Static compatibility checks built directly into Node.js tools. | [ESLint Guide](docs/eslint.md) |
 | **VS Code Extension** | <img src="assets/icon-vscode.png" width="40" height="40" /> | Native editor integration with real-time translation preview panels. | [VS Code Guide](docs/vscode.md) |
 | **Interactive Playground** | <img src="assets/icon-playground.png" width="40" height="40" /> | Web-based editor sandbox to experiment with compilation directly. | [Playground Guide](docs/playground.md) |
+| **Globals Pattern** | <img src="assets/logo.png" width="40" height="40" /> | Design pattern for managing global constants and variables natively. | [Globals Guide](docs/globals.md) |
 
-For further details on how the compiler works under the hood and how to leverage the hybrid IPC bridge, please read the [Architecture Guide](docs/architecture.md) and [Hybrid Interoperability Bridge Guide](docs/hybrid.md).
+For further details on how the compiler works under the hood and how to leverage the hybrid IPC bridge, please read the [Architecture Guide](docs/architecture.md), [Hybrid Interoperability Bridge Guide](docs/hybrid.md), and [Globals Guide](docs/globals.md).
 
 
 ## Architecture

@@ -1,80 +1,326 @@
 <!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Rustify Playground</title>
-  <style>
-    :root { color-scheme: dark; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-    * { box-sizing: border-box; }
-    body { margin: 0; background: #0c1017; color: #d9e2f2; }
-    header { display: flex; align-items: center; gap: 18px; padding: 18px 24px; border-bottom: 1px solid #283244; }
-    h1 { margin: 0; font-size: 18px; }
-    header span { color: #8da2bf; font-size: 13px; }
-    button { margin-left: auto; border: 0; border-radius: 7px; padding: 9px 16px; background: #ff7a45; color: #17120f; font-weight: 700; cursor: pointer; }
-    main { display: grid; grid-template-columns: 1fr 1fr; min-height: calc(100vh - 65px); }
-    section { min-width: 0; display: flex; flex-direction: column; }
-    section + section { border-left: 1px solid #283244; }
-    label { padding: 12px 16px; color: #8da2bf; border-bottom: 1px solid #283244; font-size: 12px; text-transform: uppercase; letter-spacing: .08em; }
-    textarea, pre { flex: 1; width: 100%; margin: 0; border: 0; padding: 18px; background: transparent; color: inherit; font: inherit; font-size: 14px; line-height: 1.55; resize: none; outline: none; overflow: auto; }
-    #status { padding: 10px 16px; min-height: 39px; border-top: 1px solid #283244; color: #74d59b; font-size: 12px; white-space: pre-wrap; }
-    #status.error { color: #ff8c8c; }
-    @media (max-width: 800px) { main { grid-template-columns: 1fr; } section + section { border-left: 0; border-top: 1px solid #283244; } }
-  </style>
-</head>
-<body>
-  <header>
-    <h1>Rustify Playground</h1>
-    <span>Strict TypeScript → readable Rust</span>
-    <button id="compile">Compile</button>
-  </header>
-  <main>
-    <section>
-      <label for="source">Rustify TypeScript</label>
-      <textarea id="source" spellcheck="false"></textarea>
-      <div id="status">Loading example…</div>
-    </section>
-    <section>
-      <label for="output">Generated Rust</label>
-      <pre id="output"></pre>
-    </section>
-  </main>
-  <script>
-    const source = document.querySelector("#source");
-    const output = document.querySelector("#output");
-    const status = document.querySelector("#status");
-    let timer;
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Rustify Playground</title>
 
-    async function compile() {
-      status.textContent = "Compiling…";
-      status.className = "";
-      const response = await fetch("/api/compile", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ source: source.value })
-      });
-      const result = await response.json();
-      output.textContent = result.rust ?? "";
-      if (result.valid) {
-        status.textContent = "Native Rustify compilation passed.";
-      } else {
-        status.className = "error";
-        status.textContent = result.diagnostics
-          .map((item) => `[${item.code}] ${item.message}${item.hint ? `\nHint: ${item.hint}` : ""}`)
-          .join("\n\n");
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
       }
-    }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: #0c1017;
+        color: #d9e2f2;
+        overflow: hidden;
+      }
+      header {
+        display: flex;
+        align-items: center;
+        gap: 18px;
+        padding: 14px 24px;
+        border-bottom: 1px solid #283244;
+        background: #090d14;
+        height: 60px;
+      }
+      h1 {
+        margin: 0;
+        font-size: 16px;
+        font-weight: 700;
+        color: #ffffff;
+        letter-spacing: -0.02em;
+      }
+      header span {
+        color: #8da2bf;
+        font-size: 12px;
+      }
+      button {
+        margin-left: auto;
+        border: 0;
+        border-radius: 6px;
+        padding: 8px 16px;
+        background: #ff7a45;
+        color: #17120f;
+        font-weight: 700;
+        font-size: 13px;
+        cursor: pointer;
+        transition: background 0.2s;
+      }
+      button:hover {
+        background: #ff9c6e;
+      }
+      main {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        height: calc(100vh - 60px);
+      }
+      section {
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+      }
+      section + section {
+        border-left: 1px solid #283244;
+      }
+      .panel-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 10px 16px;
+        border-bottom: 1px solid #283244;
+        background: #0f141f;
+        height: 40px;
+      }
+      label {
+        color: #8da2bf;
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        font-weight: 700;
+      }
+      .editor-pane {
+        flex: 1;
+        overflow: hidden;
+        position: relative;
+        background: #090d14;
+      }
+      .cm-editor {
+        height: 100%;
+        font-size: 13px;
+      }
+      #theme-selector {
+        background: #161b26;
+        color: #8da2bf;
+        border: 1px solid #283244;
+        border-radius: 4px;
+        padding: 2px 6px;
+        font-size: 11px;
+        outline: none;
+        cursor: pointer;
+      }
+      #theme-selector:hover {
+        border-color: #8da2bf;
+        color: #ffffff;
+      }
+      #status {
+        padding: 12px 16px;
+        min-height: 50px;
+        max-height: 150px;
+        border-top: 1px solid #283244;
+        color: #74d59b;
+        font-size: 12px;
+        white-space: pre-wrap;
+        overflow-y: auto;
+        background: #0e131f;
+      }
+      #status.error {
+        color: #ff8c8c;
+      }
+      @media (max-width: 800px) {
+        main {
+          grid-template-columns: 1fr;
+          height: calc(100vh - 60px);
+        }
+        section + section {
+          border-left: 0;
+          border-top: 1px solid #283244;
+        }
+      }
+    </style>
+  </head>
 
-    source.addEventListener("input", () => {
-      clearTimeout(timer);
-      timer = setTimeout(compile, 250);
-    });
-    document.querySelector("#compile").addEventListener("click", compile);
+  <body>
+    <header>
+      <h1>Rustify Playground</h1>
+      <span>Strict TypeScript → readable Rust</span>
+      <button id="compile">Compile</button>
+    </header>
+    <main>
+      <section>
+        <div class="panel-header">
+          <label>Rustify TypeScript</label>
+          <select id="theme-selector">
+            <option value="onedark">One Dark</option>
+            <option value="light">Tema Claro</option>
+          </select>
+        </div>
 
-    fetch("/api/example")
-      .then((response) => response.text())
-      .then((example) => { source.value = example; return compile(); })
-      .catch((error) => { status.className = "error"; status.textContent = error; });
-  </script>
-</body>
+        <div id="source-container" class="editor-pane"></div>
+        <div id="status">Loading example…</div>
+      </section>
+      <section>
+        <div class="panel-header">
+          <label>Generated Rust</label>
+        </div>
+        <div id="output-container" class="editor-pane"></div>
+      </section>
+    </main>
+
+    <script type="module">
+      import {
+        EditorState,
+        Compartment,
+      } from "https://esm.sh/@codemirror/state";
+      import {
+        EditorView,
+        keymap,
+        lineNumbers,
+        highlightActiveLineGutter,
+      } from "https://esm.sh/@codemirror/view";
+      import {
+        defaultKeymap,
+        history,
+        historyKeymap,
+      } from "https://esm.sh/@codemirror/commands";
+      import { javascript } from "https://esm.sh/@codemirror/lang-javascript";
+      import { rust } from "https://esm.sh/@codemirror/lang-rust";
+      import { oneDark } from "https://esm.sh/@codemirror/theme-one-dark";
+      import {
+        autocompletion,
+        completionKeymap,
+      } from "https://esm.sh/@codemirror/autocomplete";
+      import { bracketMatching } from "https://esm.sh/@codemirror/language";
+
+      const themeCompartment = new Compartment();
+      const status = document.querySelector("#status");
+      let timer;
+
+      // Configuración base de CodeMirror para Rustify
+      const baseTheme = EditorView.theme({
+        "&": { height: "100%" },
+        ".cm-scroller": { overflow: "auto" },
+        ".cm-gutters": { border: "none" },
+      });
+
+      // Inicializar editor izquierdo (TypeScript)
+      const leftState = EditorState.create({
+        doc: "",
+        extensions: [
+          lineNumbers(),
+          highlightActiveLineGutter(),
+          history(),
+          bracketMatching(),
+          javascript({ typescript: true }),
+          themeCompartment.of(oneDark),
+          baseTheme,
+          autocompletion(),
+          keymap.of([...defaultKeymap, ...historyKeymap, ...completionKeymap]),
+          EditorView.updateListener.of((update) => {
+            if (update.docChanged) {
+              clearTimeout(timer);
+              timer = setTimeout(compile, 250);
+            }
+          }),
+        ],
+      });
+
+      const leftEditor = new EditorView({
+        state: leftState,
+        parent: document.querySelector("#source-container"),
+      });
+
+      // Inicializar editor derecho (Rust - Lectura únicamente)
+      const rightState = EditorState.create({
+        doc: "",
+        extensions: [
+          lineNumbers(),
+          highlightActiveLineGutter(),
+          bracketMatching(),
+          rust(),
+          themeCompartment.of(oneDark),
+          baseTheme,
+          EditorState.readOnly.of(true),
+          EditorView.editable.of(false),
+        ],
+      });
+
+      const rightEditor = new EditorView({
+        state: rightState,
+        parent: document.querySelector("#output-container"),
+      });
+
+      // Compilación automática llamando a la API local de Rustify
+      async function compile() {
+        status.textContent = "Compiling…";
+        status.className = "";
+
+        const sourceCode = leftEditor.state.doc.toString();
+
+        try {
+          const response = await fetch("/api/compile", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ source: sourceCode }),
+          });
+          const result = await response.json();
+
+          // Actualizar editor de Rust derecho
+          rightEditor.dispatch({
+            changes: {
+              from: 0,
+              to: rightEditor.state.doc.length,
+              insert: result.rust ?? "",
+            },
+          });
+
+          if (result.valid) {
+            status.textContent = "Native Rustify compilation passed.";
+          } else {
+            status.className = "error";
+            status.textContent = result.diagnostics
+              .map(
+                (item) =>
+                  `[${item.code}] ${item.message}${item.hint ? `\nHint: ${item.hint}` : ""}`,
+              )
+              .join("\n\n");
+          }
+        } catch (err) {
+          status.className = "error";
+          status.textContent = "Error de red o compilación: " + err.message;
+        }
+      }
+
+      // Selector de Temas Dinámico
+      const themeSelector = document.querySelector("#theme-selector");
+      themeSelector.addEventListener("change", (e) => {
+        const selected = e.target.value;
+        const themeExtension = selected === "onedark" ? oneDark : [];
+
+        // Aplicar el cambio a ambos editores
+        leftEditor.dispatch({
+          effects: themeCompartment.reconfigure(themeExtension),
+        });
+        rightEditor.dispatch({
+          effects: themeCompartment.reconfigure(themeExtension),
+        });
+      });
+
+      // Cargar ejemplo inicial
+      fetch("/api/example")
+        .then((response) => response.text())
+        .then((example) => {
+          leftEditor.dispatch({
+            changes: {
+              from: 0,
+              to: leftEditor.state.doc.length,
+              insert: example,
+            },
+          });
+
+          return compile();
+        })
+        .catch((error) => {
+          status.className = "error";
+          status.textContent = "Error cargando el ejemplo: " + error;
+        });
+
+      document.querySelector("#compile").addEventListener("click", compile);
+    </script>
+  </body>
 </html>
