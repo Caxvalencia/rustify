@@ -1,11 +1,14 @@
 # Rustify
 
-Rustify compiles a deliberately strict subset of TypeScript into safe, readable Rust.
-The current `0.1.0` MVP includes an Oxc-backed parser, shared analyzer, typed IR, Rust
-code generator, CLI, language server, ESLint plugin scaffold, and VS Code extension
-scaffold.
+<p align="center">
+  <img src="assets/logo.png" alt="Rustify Logo" width="160" />
+</p>
 
-## Supported in 0.1
+Rustify compiles a deliberately strict subset of TypeScript into safe, readable Rust.
+The current `1.0.0` release includes an Oxc-backed parser, shared analyzer, typed IR, Rust
+code generator, CLI, language server, ESLint plugin, and VS Code extension.
+
+## Supported in 1.0
 
 - Object type aliases and simple interfaces to Rust structs
 - Typed object literals, nested structs, and omitted optional fields
@@ -105,11 +108,13 @@ async function pause(milliseconds: number): Promise<void> {
 }
 ```
 
-## Experimental hybrid mode
+## Hybrid mode
 
-Hybrid mode attempts native Rust compilation first. If strict Rustify analysis
-rejects otherwise valid TypeScript, it preserves the module graph as a fallback
-bundle and records the decision in `rustify-hybrid.json`.
+Hybrid mode (`--mode hybrid`) enables native Rust compilation combined with dynamic Node.js fallback execution at the function level:
+1. **Function-Level Annotation**: Mark specific functions with a `/** @hybrid */` JSDoc comment.
+2. **Type Checking Bypass**: Inside hybrid functions, dynamic types like `any` are allowed and will not stop native compilation.
+3. **IPC Fallback Lowering**: The body of a hybrid function is replaced in the generated Rust with a synchronous IPC/JSON call (`rustify_runtime::call_js_fallback`).
+4. **Source Copying**: Original TypeScript sources are automatically copied to the `fallback/` directory in your compilation output to be loaded dynamically by Node.js using `--experimental-transform-types` at runtime.
 
 ```json
 {
@@ -121,17 +126,7 @@ bundle and records the decision in `rustify-hybrid.json`.
 }
 ```
 
-The current experimental fallback uses Node 22+ type transformation as an
-external V8 host:
-
-```bash
-rustify compile
-cd dist
-npm run start
-```
-
-Native mode remains the default and continues rejecting unsupported dynamic
-TypeScript.
+Native mode remains the default and continues rejecting unsupported dynamic TypeScript unless explicitly annotated with `/** @hybrid */`.
 
 ## Commands
 
@@ -208,10 +203,7 @@ Oxc TypeScript parser -> normalized AST -> shared analyzer -> typed IR -> Rust c
                                               +-> CLI / LSP / editor tooling
 ```
 
-`PLAN.md` contains the broader roadmap. This repository implements the native
-compiler/tooling milestones through basic async support and an experimental
-external-V8 hybrid fallback, plus a shared-pipeline browser playground. Embedded
-V8 and full TypeScript coverage remain later roadmap items.
+This repository implements the native compiler/tooling milestones through basic async support, a synchronous hybrid fallback bridge, and a shared-pipeline browser playground. Embedded V8 and full TypeScript coverage remain later roadmap items.
 
 ## Development
 

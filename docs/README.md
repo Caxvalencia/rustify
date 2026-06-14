@@ -27,7 +27,7 @@ Puedes compilar el proyecto localmente utilizando el `Makefile` provisto:
 
 * **Modo Desarrollo (Debug):**
   ```bash
-  make build:dev
+  make build-dev
   ```
 * **Modo Producción (Release):**
   ```bash

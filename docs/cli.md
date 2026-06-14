@@ -69,7 +69,8 @@ En lugar de especificar argumentos en la CLI cada vez, puedes definir un archivo
 
 ## Modo Híbrido
 
-Cuando el modo se establece en `"hybrid"`, el compilador intentará compilar el código TypeScript a Rust nativo primero. Si encuentra características dinámicas no soportadas por la especificación de Rustify:
-1. Genera un directorio `fallback` con el código TypeScript.
-2. Escribe una configuración de inicio en `package.json` para ejecutar el código usando el motor V8 de Node.js mediante `--experimental-transform-types`.
-3. Registra la decisión en `rustify-hybrid.json`.
+Cuando el compilador se ejecuta en el modo híbrido (`--mode hybrid` o `"mode": "hybrid"` en `rustify.json`), se habilita la compilación nativa en Rust combinada con delegación dinámica a Node.js:
+1. **Detección por Función**: El compilador analiza las funciones y detecta aquellas marcadas con la anotación javadoc `/** @hybrid */`.
+2. **Ignorado de Diagnósticos**: En las funciones híbridas, el type-checker ignora tipos dinámicos o incompatibles (como `any`) en lugar de generar errores fatales que detengan la compilación nativa.
+3. **Generación de Código**: El cuerpo de estas funciones se traduce en Rust a una llamada síncrona IPC/JSON (`rustify_runtime::call_js_fallback(...)`) hacia Node.js en tiempo de ejecución.
+4. **Copia de Fuentes**: El compilador copia de forma transparente todos los archivos TypeScript originales al directorio `fallback/` en el directorio de salida para que Node.js los cargue dinámicamente usando `--experimental-transform-types`.
