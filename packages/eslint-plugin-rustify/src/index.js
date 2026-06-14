@@ -1,39 +1,46 @@
-const forbidden = {
-  "no-any": { pattern: /\bany\b/g, message: "`any` is not supported by Rustify." },
-  "no-unknown": { pattern: /\bunknown\b/g, message: "`unknown` is not supported by Rustify." },
-  "no-eval": { pattern: /\beval\s*\(/g, message: "`eval` is not supported by Rustify." },
-  "no-unsupported-union": {
-    pattern: /\b(string|number|boolean)\s*\|\s*(string|number|boolean)\b/g,
-    message: "Only nullable unions are supported by Rustify."
-  }
+import parser from "@typescript-eslint/parser";
+import explicitParamTypes from "./rules/explicit-param-types.js";
+import explicitReturnType from "./rules/explicit-return-type.js";
+import noAny from "./rules/no-any.js";
+import noDynamicObject from "./rules/no-dynamic-object.js";
+import noEval from "./rules/no-eval.js";
+import noUnknown from "./rules/no-unknown.js";
+import noUnsupportedUnion from "./rules/no-unsupported-union.js";
+import noUnsupportedSyntax from "./rules/no-unsupported-syntax.js";
+
+const rules = {
+  "no-any": noAny,
+  "no-unknown": noUnknown,
+  "no-eval": noEval,
+  "no-dynamic-object": noDynamicObject,
+  "no-unsupported-union": noUnsupportedUnion,
+  "no-unsupported-syntax": noUnsupportedSyntax,
+  "explicit-return-type": explicitReturnType,
+  "explicit-param-types": explicitParamTypes
 };
 
-const rules = Object.fromEntries(
-  Object.entries(forbidden).map(([name, rule]) => [
-    name,
-    {
-      meta: { type: "problem", docs: { description: rule.message }, schema: [] },
-      create(context) {
-        return {
-          Program(node) {
-            const source = context.sourceCode.getText();
-            for (const match of source.matchAll(rule.pattern)) {
-              context.report({ node, loc: context.sourceCode.getLocFromIndex(match.index), message: rule.message });
-            }
-          }
-        };
-      }
-    }
-  ])
+const recommendedRules = Object.fromEntries(
+  Object.keys(rules).map((name) => [`rustify/${name}`, "error"])
 );
 
-export default {
+const plugin = {
+  meta: { name: "eslint-plugin-rustify", version: "0.1.0" },
   rules,
-  configs: {
-    recommended: {
-      plugins: ["rustify"],
-      rules: Object.fromEntries(Object.keys(rules).map((name) => [`rustify/${name}`, "error"]))
-    }
-  }
+  configs: {}
 };
 
+plugin.configs.recommended = {
+  parser: "@typescript-eslint/parser",
+  plugins: ["rustify"],
+  rules: recommendedRules
+};
+
+plugin.configs["flat/recommended"] = {
+  files: ["**/*.ts", "**/*.tsx"],
+  plugins: { rustify: plugin },
+  languageOptions: { parser },
+  rules: recommendedRules
+};
+
+export { rules };
+export default plugin;

@@ -1,13 +1,27 @@
 {
   "name": "eslint-plugin-rustify",
   "version": "0.1.0",
+  "description": "ESLint rules for the Rustify-compatible TypeScript subset.",
+  "license": "MIT",
   "type": "module",
   "main": "src/index.js",
+  "files": ["src", "README.md"],
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "scripts": {
+    "test": "node --test"
+  },
   "engines": {
     "node": ">=20"
   },
   "peerDependencies": {
     "eslint": ">=9"
+  },
+  "dependencies": {
+    "@typescript-eslint/parser": "^8.0.0"
+  },
+  "devDependencies": {
+    "eslint": "^9.0.0"
   }
 }
-
