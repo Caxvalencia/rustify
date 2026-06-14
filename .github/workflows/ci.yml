@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  workspace:
+    name: Workspace (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            packages/eslint-plugin-rustify/package-lock.json
+            packages/vscode-rustify/package-lock.json
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --all --check
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+      - run: cargo test --workspace
+      - run: npm ci --prefix packages/eslint-plugin-rustify
+      - run: npm test --prefix packages/eslint-plugin-rustify
+      - run: npm ci --prefix packages/vscode-rustify
+      - run: npm test --prefix packages/vscode-rustify
+
+  integration:
+    name: Native and hybrid integration
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            packages/eslint-plugin-rustify/package-lock.json
+            packages/vscode-rustify/package-lock.json
+      - uses: Swatinem/rust-cache@v2
+      - run: ./scripts/ci.sh
