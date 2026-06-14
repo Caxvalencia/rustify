@@ -1,11 +1,3 @@
-export function getAppName(): string {
-  return "RustifyGlobalDemo";
-}
-
-export function getTimeoutMs(): number {
-  return 5000;
-}
-
-export function getMaxConnections(): number {
-  return 20;
-}
+export const appName = "RustifyGlobalDemo";
+export const timeoutMs = 5000;
+export const maxConnections = 20;

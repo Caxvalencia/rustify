@@ -215,11 +215,19 @@ pub struct Function {
     pub is_hybrid: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Const {
+    pub name: String,
+    pub ty: Type,
+    pub value: Expression,
+}
+
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct Program {
     pub structs: Vec<Struct>,
     pub enums: Vec<Enum>,
     pub functions: Vec<Function>,
+    pub consts: Vec<Const>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

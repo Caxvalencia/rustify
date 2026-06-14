@@ -78,6 +78,21 @@ pub struct ImportDecl {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ConstDecl {
+    pub name: String,
+    pub ty: Option<Type>,
+    pub value: ConstValue,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ConstValue {
+    String(String),
+    Number(String),
+    Boolean(bool),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Program {
     pub source: String,
     pub unsupported_top_level: Vec<Span>,
@@ -88,6 +103,7 @@ pub struct Program {
     pub structs: Vec<StructDecl>,
     pub enums: Vec<EnumDecl>,
     pub functions: Vec<FunctionDecl>,
+    pub consts: Vec<ConstDecl>,
 }
 
 #[derive(Debug, Error)]
@@ -110,6 +126,7 @@ pub fn parse(source: &str) -> Result<Program, ParseError> {
         structs: Vec::new(),
         enums: Vec::new(),
         functions: Vec::new(),
+        consts: Vec::new(),
     };
 
     let mut cursor = 0;
@@ -213,6 +230,20 @@ pub fn parse(source: &str) -> Result<Program, ParseError> {
                     }
                 }
                 program.functions.push(declaration);
+                cursor = end;
+            }
+            "const" => {
+                let (declaration, end) = parse_const(source, start, after_keyword)?;
+                
+                if exported {
+                    if default_exported {
+                        program.default_export = Some(declaration.name.clone());
+                    } else {
+                        program.exports.push(declaration.name.clone());
+                    }
+                }
+
+                program.consts.push(declaration);
                 cursor = end;
             }
             _ => {
@@ -455,6 +486,93 @@ fn parse_function(
     ))
 }
 
+fn parse_const(
+    source: &str,
+    start: usize,
+    mut cursor: usize,
+) -> Result<(ConstDecl, usize), ParseError> {
+    cursor = skip_space_and_comments(source, cursor);
+    
+    let (name, after_name) = next_word(source, cursor);
+
+    if name.is_empty() {
+        return Err(ParseError::Declaration(cursor));
+    }
+
+    cursor = skip_space_and_comments(source, after_name);
+    
+    // Check for type annotation (optional)
+    let ty = if source.as_bytes().get(cursor) == Some(&b':') {
+        let type_start = skip_space_and_comments(source, cursor + 1);
+        let eq_sign = source[type_start..]
+            .find('=')
+            .map(|offset| type_start + offset)
+            .ok_or(ParseError::Declaration(type_start))?;
+        cursor = eq_sign;
+
+        Some(parse_type(source[type_start..eq_sign].trim()))
+    } else {
+        None
+    };
+
+    // Check for '='
+    if source.as_bytes().get(cursor) != Some(&b'=') {
+        return Err(ParseError::Declaration(cursor));
+    }
+
+    cursor = skip_space_and_comments(source, cursor + 1);
+    
+    // Parse the literal value up to a semicolon or newline
+    let stmt_end = source[cursor..]
+        .find(|character: char| character == ';' || character == '\n')
+        .map(|offset| cursor + offset)
+        .unwrap_or(source.len());
+        
+    let val_str = source[cursor..stmt_end].trim();
+    let value = parse_const_value(val_str).ok_or(ParseError::Declaration(cursor))?;
+    
+    let end = if source.as_bytes().get(stmt_end) == Some(&b';') {
+        stmt_end + 1
+    } else {
+        stmt_end
+    };
+    
+    Ok((
+        ConstDecl {
+            name: name.to_owned(),
+            ty,
+            value,
+            span: Span { start, end },
+        },
+        end,
+    ))
+}
+
+fn parse_const_value(val_str: &str) -> Option<ConstValue> {
+    if val_str == "true" {
+        return Some(ConstValue::Boolean(true));
+    }
+
+    if val_str == "false" {
+        return Some(ConstValue::Boolean(false));
+    }
+
+    // Check for string literals (supporting double quotes, single quotes, backticks)
+    if (val_str.starts_with('"') && val_str.ends_with('"'))
+        || (val_str.starts_with('\'') && val_str.ends_with('\''))
+        || (val_str.starts_with('`') && val_str.ends_with('`'))
+    {
+        return Some(ConstValue::String(val_str[1..val_str.len() - 1].to_owned()));
+    }
+
+    // Check for numbers
+    if let Ok(_num) = val_str.parse::<f64>() {
+        return Some(ConstValue::Number(val_str.to_owned()));
+    }
+
+    None
+}
+
 pub fn parse_type(input: &str) -> Type {
     let input = input.trim();
     if let Some(inner) = input.strip_suffix("[]") {
@@ -692,7 +810,31 @@ mod tests {
 
     #[test]
     fn tracks_unsupported_top_level_code() {
-        let program = parse("const value: string = \"hello\"\nconsole.log(value)\n").unwrap();
+        let program = parse("let value: string = \"hello\"\nconsole.log(value)\n").unwrap();
         assert_eq!(program.unsupported_top_level.len(), 2);
+    }
+
+    #[test]
+    fn parses_global_const_declarations() {
+        let program = parse(
+            "const appName = \"demo-app\"\n\
+             export const timeoutMs: number = 2000;\n\
+             const isProd = true;",
+        )
+        .unwrap();
+        assert_eq!(program.consts.len(), 3);
+        
+        assert_eq!(program.consts[0].name, "appName");
+        assert_eq!(program.consts[0].ty, None);
+        assert_eq!(program.consts[0].value, ConstValue::String("demo-app".to_owned()));
+        
+        assert_eq!(program.consts[1].name, "timeoutMs");
+        assert_eq!(program.consts[1].ty, Some(Type::Number));
+        assert_eq!(program.consts[1].value, ConstValue::Number("2000".to_owned()));
+        assert!(program.exports.contains(&"timeoutMs".to_owned()));
+        
+        assert_eq!(program.consts[2].name, "isProd");
+        assert_eq!(program.consts[2].ty, None);
+        assert_eq!(program.consts[2].value, ConstValue::Boolean(true));
     }
 }

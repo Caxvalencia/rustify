@@ -8,6 +8,7 @@ pub struct SymbolTable {
     pub structs: HashMap<String, HashMap<String, Type>>,
     pub enums: HashMap<String, HashSet<String>>,
     pub functions: HashMap<String, FunctionSignature>,
+    pub consts: HashMap<String, Type>,
 }
 
 #[derive(Debug, Clone)]
@@ -99,6 +100,7 @@ pub fn analyze_module(program: &Program, imported: &Program) -> Analysis {
     visible.structs.extend(imported.structs.clone());
     visible.enums.extend(imported.enums.clone());
     visible.functions.extend(imported.functions.clone());
+    visible.consts.extend(imported.consts.clone());
 
     let mut diagnostics = validate_forbidden_syntax(&program.source);
     filter_hybrid_diagnostics(&mut diagnostics, program);
@@ -181,6 +183,20 @@ pub fn add_imported_declarations(
                 rename_imported_type(ty, &aliases);
             }
             target.functions.push(function);
+        }
+        if let Some(constant) = source
+            .consts
+            .iter()
+            .find(|item| item.name == binding.imported)
+        {
+            let mut constant = constant.clone();
+            constant.name = binding.local.clone();
+
+            if let Some(ty) = &mut constant.ty {
+                rename_imported_type(ty, &aliases);
+            }
+
+            target.consts.push(constant);
         }
     }
 }
@@ -486,6 +502,12 @@ fn build_symbol_table(program: &Program, diagnostics: &mut Vec<Diagnostic>) -> S
                 .iter()
                 .map(|value| (&value.name, value.span)),
         )
+        .chain(
+            program
+                .consts
+                .iter()
+                .map(|value| (&value.name, value.span)),
+        )
     {
         if !symbols.insert(item.0.clone()) {
             diagnostics.push(Diagnostic::error(
@@ -596,6 +618,19 @@ fn build_symbol_table(program: &Program, diagnostics: &mut Vec<Diagnostic>) -> S
                 },
             );
         }
+    }
+    for constant in &program.consts {
+        let ty = match &constant.ty {
+            Some(t) => t.clone(),
+            None => {
+                match &constant.value {
+                    rustify_parser::ConstValue::String(_) => Type::String,
+                    rustify_parser::ConstValue::Number(_) => Type::Number,
+                    rustify_parser::ConstValue::Boolean(_) => Type::Boolean,
+                }
+            }
+        };
+        table.consts.insert(constant.name.clone(), ty);
     }
     table
 }
@@ -1775,9 +1810,15 @@ fn infer_expression(
             }
         };
     }
+
     if let Some(ty) = locals.get(expression) {
         return Some(ty.clone());
     }
+
+    if let Some(ty) = symbols.consts.get(expression) {
+        return Some(ty.clone());
+    }
+
     diagnostics.push(Diagnostic::error(
         "SFT031",
         format!("unknown identifier or unsupported expression `{expression}`"),
@@ -2547,6 +2588,38 @@ fn lower(program: &Program, symbols: &SymbolTable) -> ir::Program {
             .iter()
             .map(|function| lower_function(function, symbols))
             .collect(),
+        consts: program
+            .consts
+            .iter()
+            .map(|constant| {
+                let ty = match &constant.ty {
+                    Some(t) => lower_type(t),
+                    None => {
+                        match &constant.value {
+                            rustify_parser::ConstValue::String(_) => ir::Type::String,
+                            rustify_parser::ConstValue::Number(_) => ir::Type::F64,
+                            rustify_parser::ConstValue::Boolean(_) => ir::Type::Bool,
+                        }
+                    }
+                };
+                let value_kind = match &constant.value {
+                    rustify_parser::ConstValue::String(s) => ir::ExpressionKind::String(s.clone()),
+                    rustify_parser::ConstValue::Number(n) => {
+                        let val = n.parse::<f64>().unwrap_or(0.0);
+                        ir::ExpressionKind::Number(val)
+                    }
+                    rustify_parser::ConstValue::Boolean(b) => ir::ExpressionKind::Boolean(*b),
+                };
+                ir::Const {
+                    name: to_rust_const_name(&constant.name),
+                    ty: ty.clone(),
+                    value: ir::Expression {
+                        ty,
+                        kind: value_kind,
+                    },
+                }
+            })
+            .collect(),
     }
 }
 
@@ -2987,7 +3060,12 @@ fn lower_expression(
             }
         }
     } else {
-        ir::ExpressionKind::Identifier(expression.to_owned())
+        let name = if symbols.consts.contains_key(expression) {
+            to_rust_const_name(expression)
+        } else {
+            expression.to_owned()
+        };
+        ir::ExpressionKind::Identifier(name)
     };
     Some(ir::Expression { ty, kind })
 }
@@ -3176,6 +3254,43 @@ pub fn line_column(source: &str, offset: usize) -> (usize, usize) {
     let line = prefix.bytes().filter(|byte| *byte == b'\n').count() + 1;
     let column = prefix.rsplit('\n').next().map(str::len).unwrap_or(0) + 1;
     (line, column)
+}
+
+fn to_rust_const_name(name: &str) -> String {
+    let mut output = String::new();
+    let mut prev_is_lower = false;
+
+    for (index, character) in name.chars().enumerate() {
+        if character.is_ascii_uppercase() {
+            if index > 0 && prev_is_lower && !output.ends_with('_') {
+                output.push('_');
+            }
+
+            output.push(character);
+            prev_is_lower = false;
+        } else if character == '_' {
+            output.push('_');
+            prev_is_lower = false;
+        } else if character == '$' {
+            output.push_str("_DOLLAR_");
+            prev_is_lower = false;
+        } else {
+            output.push(character.to_ascii_uppercase());
+            prev_is_lower = character.is_ascii_lowercase();
+        }
+    }
+
+    let mut clean = String::new();
+
+    for char in output.chars() {
+        if char == '_' && clean.ends_with('_') {
+            continue;
+        }
+
+        clean.push(char);
+    }
+
+    clean
 }
 
 #[cfg(test)]

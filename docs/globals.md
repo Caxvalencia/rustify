@@ -1,94 +1,120 @@
-# Gestión de Variables y Constantes Globales (Patrón Globals) — Rustify
+# Gestión de Variables y Constantes Globales — Rustify
 
 <p align="center">
   <img src="../assets/logo.png" alt="Rustify Logo" width="100" />
 </p>
 
-En el modo de compilación nativo de Rustify, declarar variables ejecutables o asignaciones libres en el ámbito global (fuera de las funciones) generará el error de diagnóstico `[SFT046]`. Esto se debe a que Rust exige condiciones estrictas de seguridad de hilos y ciclo de vida de memoria (`static` y `unsafe` mutabilidad) para variables globales.
-
-Para resolver esta necesidad de forma limpia, estructurada y compatible con el estándar nativo de Rustify, implementamos el **Patrón Globals** utilizando la modularización nativa.
+En el modo de compilación nativo de Rustify, la declaración de variables y constantes globales se maneja de forma eficiente y segura. Para ello, dispones de dos enfoques: el uso de **constantes globales estáticas directas** y el **patrón de funciones globales**.
 
 ---
 
-## El Patrón Globals
+## 1. Constantes Globales Directas (`const`) — *Recomendado*
 
-La alternativa recomendada consiste en encapsular todos los valores y configuraciones globales en un módulo TypeScript propio (por ejemplo, `globals.ts`) y exponerlos a través de funciones públicas de consulta. 
+El compilador de Rustify admite la definición directa de constantes globales utilizando la palabra clave `const` a nivel de módulo. El compilador detecta automáticamente estos valores y los transcompila a constantes nativas en Rust en formato `SCREAMING_SNAKE_CASE` de manera automática, sin generar el diagnóstico `SFT046`.
 
-### Ventajas
-1. **Seguridad Nativa**: Al transpilarse a Rust, las funciones se resuelven como llamadas limpias a funciones públicas de módulo en Rust, evitando el uso de variables estáticas inseguras (`unsafe static`).
-2. **Modularidad**: Aísla todas las variables y configuraciones globales en un único archivo, facilitando el mantenimiento.
-3. **Escalabilidad**: Permite en el futuro cambiar el origen de los datos (por ejemplo, leer variables de entorno en tiempo de ejecución o archivos JSON) simplemente modificando la función del módulo `globals.ts`, sin alterar los archivos que la importan.
+### Tipos Soportados y Restricciones de Rust
+Debido a que Rust requiere que los valores de las constantes se resuelvan en tiempo de compilación y no realicen asignaciones en la memoria dinámica (heap), los tipos admitidos están limitados a:
+- **String**: Se mapean automáticamente a referencias estáticas `&'static str` en Rust.
+- **Number**: Se mapean a `f64`.
+- **Boolean**: Se mapean a `bool`.
 
----
+*Nota: Los arrays (vectores) y objetos JSON requieren asignación en el heap, por lo que no pueden declararse como constantes directas en el ámbito global.*
 
-## Ejemplo Práctico
+### Ejemplo Práctico
 
-### 1. Definición del Módulo de Configuración Global (`globals.ts`)
-
-Crea un archivo TypeScript dedicado a tus constantes y configuraciones globales:
-
+#### `globals.ts` (Definición de constantes)
 ```typescript
-// src/globals.ts
+// Define y exporta tus constantes en camelCase o snake_case
+export const appName = "MiAplicacionRustify";
+export const timeoutMs = 5000;
+export const maxConnections = 20;
+```
 
+#### `main.ts` (Consumo directo de las constantes)
+```typescript
+import { appName, timeoutMs, maxConnections } from "./globals";
+
+export function run(): void {
+  console.log("Aplicación activa: " + appName);
+  console.log(`Timeout: ${timeoutMs}ms`);
+  console.log(`Conexiones: ${maxConnections}`);
+}
+```
+
+### Mapeo Generado en Rust
+
+El compilador traduce de forma transparente las variables y sus referencias a la nomenclatura recomendada en Rust:
+
+#### `globals.rs`
+```rust
+// Generado automáticamente por Rustify
+pub const APP_NAME: &'static str = "MiAplicacionRustify";
+pub const TIMEOUT_MS: f64 = 5000.0;
+pub const MAX_CONNECTIONS: f64 = 20.0;
+```
+
+#### `main.rs`
+```rust
+use crate::globals::{APP_NAME, TIMEOUT_MS, MAX_CONNECTIONS};
+
+pub fn run() {
+    println!("{:?}", format!("{}{}", "Aplicación activa: ".to_string(), APP_NAME));
+    println!("{}", format!("Timeout: {}ms", TIMEOUT_MS));
+    println!("{}", format!("Conexiones: {}", MAX_CONNECTIONS));
+}
+```
+
+---
+
+## 2. El Patrón Globals (Envoltura en Funciones)
+
+Si necesitas utilizar estructuras complejas (como arrays u objetos JSON) o valores globales que dependan de lógica en tiempo de ejecución (como leer variables de entorno o configuraciones dinámicas), la alternativa recomendada es encapsular el acceso a través de funciones públicas de consulta. 
+
+### Ejemplo de Configuración Dinámica/Compleja
+
+#### `globals.ts`
+```typescript
 export function getAppName(): string {
   return "MiAplicacionRustify";
 }
 
-export function getTimeoutMs(): number {
-  return 5000;
-}
-
-export function getMaxConnections(): number {
-  return 20;
+// Útil para inicializar objetos o datos complejos
+export function getLimitesConexiones(): number[] {
+  return [10, 20, 50];
 }
 ```
 
-### 2. Consumo de las Variables Globales (`main.ts`)
-
-Importa las funciones de consulta del módulo `globals.ts` en tu archivo de entrada o de lógica principal:
-
+#### `main.ts`
 ```typescript
-// src/main.ts
-import { getAppName, getTimeoutMs, getMaxConnections } from "./globals";
+import { getAppName, getLimitesConexiones } from "./globals";
 
 export function run(): void {
   console.log("Aplicación activa: " + getAppName());
-  console.log("Timeout: " + getTimeoutMs() + "ms");
-  console.log("Conexiones: " + getMaxConnections());
+  const limites = getLimitesConexiones();
+  console.log(`Límite máximo: ${limites[1]}`);
 }
 ```
 
----
+### Mapeo Generado en Rust
 
-## Mapeo Generado en Rust
-
-Rustify transpila este patrón a un sistema de módulos estructurado en Rust. Cada archivo TypeScript se mapea a su propio módulo `.rs` de forma aislada:
-
-### globals.rs (Módulo de Configuración)
+#### `globals.rs`
 ```rust
-// dist-rust/globals.rs
-
 pub fn get_app_name() -> String {
     "MiAplicacionRustify".to_string()
 }
 
-pub fn get_timeout_ms() -> f64 {
-    5000.0
-}
-
-pub fn get_max_connections() -> f64 {
-    20.0
+pub fn get_limites_conexiones() -> Vec<f64> {
+    vec![10.0, 20.0, 50.0]
 }
 ```
 
-### main.rs (Punto de entrada)
+#### `main.rs`
 ```rust
-// dist-rust/main.rs
-use crate::globals::{get_app_name, get_timeout_ms, get_max_connections};
+use crate::globals::{get_app_name, get_limites_conexiones};
 
 pub fn run() {
-    println!("Aplicación activa: {}", get_app_name());
-    println!("Timeout: {}ms", get_timeout_ms());
-    println!("Conexiones: {}", get_max_connections());
+    println!("{:?}", format!("{}{}", "Aplicación activa: ".to_string(), get_app_name()));
+    let limites = get_limites_conexiones();
+    println!("{}", format!("Límite máximo: {}", limites[1]));
 }
 ```

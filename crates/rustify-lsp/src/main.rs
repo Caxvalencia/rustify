@@ -314,6 +314,7 @@ fn program_declares(program: &Program, name: &str) -> bool {
     program.structs.iter().any(|item| item.name == name)
         || program.enums.iter().any(|item| item.name == name)
         || program.functions.iter().any(|item| item.name == name)
+        || program.consts.iter().any(|item| item.name == name)
 }
 
 fn empty_program() -> Program {
@@ -327,6 +328,7 @@ fn empty_program() -> Program {
         structs: Vec::new(),
         enums: Vec::new(),
         functions: Vec::new(),
+        consts: Vec::new(),
     }
 }
 

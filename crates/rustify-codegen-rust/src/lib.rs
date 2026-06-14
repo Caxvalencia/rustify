@@ -201,6 +201,7 @@ fn emit_declarations(
 
         if function.is_hybrid {
             let mut args = Vec::new();
+
             for param in &function.params {
                 args.push(format!(
                     "serde_json::json!({})",
@@ -232,11 +233,56 @@ fn emit_declarations(
                     writeln!(output, "    let _ = &{};", rust_identifier(&parameter.name)).unwrap();
                 }
             }
+
             emit_statements(output, &function.body, 1)?;
         }
+
         writeln!(output, "}}\n").unwrap();
     }
+
+    for constant in &program.consts {
+        let ty_str = if constant.ty == Type::String {
+            "&'static str".to_owned()
+        } else {
+            emit_type(&constant.ty)
+        };
+
+        let val_str = match &constant.value.kind {
+            ExpressionKind::String(val) => format!("{val:?}"),
+            _ => emit_expression(&constant.value)?,
+        };
+
+        writeln!(
+            output,
+            "{}const {}: {} = {};\n",
+            visibility_const(&constant.name, exports),
+            rust_identifier(&constant.name),
+            ty_str,
+            val_str
+        )
+        .unwrap();
+    }
+
     Ok(())
+}
+
+fn visibility_const(name: &str, exports: Option<&HashSet<&str>>) -> &'static str {
+    match exports {
+        None => "pub ",
+        Some(exports) => {
+            let found = exports.iter().any(|exp| {
+                let normalized_exp = exp.to_ascii_uppercase().replace('_', "");
+                let normalized_name = name.to_ascii_uppercase().replace('_', "");
+                normalized_exp == normalized_name
+            });
+
+            if found {
+                "pub "
+            } else {
+                ""
+            }
+        }
+    }
 }
 
 fn visibility(name: &str, exports: Option<&HashSet<&str>>) -> &'static str {
@@ -1298,12 +1344,18 @@ fn rust_callee(name: &str) -> String {
 }
 
 pub fn rust_identifier(name: &str) -> String {
+    if name.chars().all(|c| !c.is_alphabetic() || c.is_ascii_uppercase()) {
+        return name.to_owned();
+    }
+
     let mut output = String::new();
+
     for (index, character) in name.chars().enumerate() {
         if character.is_ascii_uppercase() {
             if index > 0 && !output.ends_with('_') {
                 output.push('_');
             }
+
             output.push(character.to_ascii_lowercase());
         } else if character == '$' {
             output.push_str("_dollar_");
@@ -1364,8 +1416,10 @@ pub fn rust_module_identifier(name: &str) -> String {
             }
         })
         .collect::<String>();
+
     let identifier = rust_identifier(&sanitized);
     let identifier = identifier.strip_prefix("r#").unwrap_or(&identifier);
+
     if identifier.is_empty() {
         "rustify_module".to_owned()
     } else {

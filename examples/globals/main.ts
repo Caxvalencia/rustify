@@ -1,7 +1,7 @@
-import { getAppName, getMaxConnections, getTimeoutMs } from "./globals";
+import { appName, timeoutMs, maxConnections } from "./globals";
 
 export function runDemo(): void {
-  console.log("Aplicación: " + getAppName());
-  console.log("Timeout: " + getTimeoutMs() + "ms");
-  console.log("Conexiones Máximas: " + getMaxConnections());
+  console.log("Aplicación: " + appName);
+  console.log(`Timeout: ${timeoutMs}ms`);
+  console.log(`Conexiones Máximas: ${maxConnections}`);
 }

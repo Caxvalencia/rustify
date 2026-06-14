@@ -217,6 +217,7 @@ fn load(file: &Path) -> Result<(String, Program, rustify_analyzer::Analysis)> {
         structs: Vec::new(),
         enums: Vec::new(),
         functions: Vec::new(),
+        consts: Vec::new(),
     };
     let entry = file.canonicalize()?;
     let mut paths: Vec<_> = modules.keys().cloned().collect();
@@ -375,6 +376,7 @@ fn empty_program() -> Program {
         structs: Vec::new(),
         enums: Vec::new(),
         functions: Vec::new(),
+        consts: Vec::new(),
     }
 }
 
@@ -502,6 +504,7 @@ fn program_declares(program: &Program, name: &str) -> bool {
     program.structs.iter().any(|item| item.name == name)
         || program.enums.iter().any(|item| item.name == name)
         || program.functions.iter().any(|item| item.name == name)
+        || program.consts.iter().any(|item| item.name == name)
 }
 
 fn validate_module_cycles(modules: &HashMap<PathBuf, Program>) -> Result<()> {
@@ -556,6 +559,7 @@ fn append_program(target: &mut Program, mut module: Program) {
     target.structs.extend(module.structs);
     target.enums.extend(module.enums);
     target.functions.extend(module.functions);
+    target.consts.extend(module.consts);
 }
 
 fn shift_spans(program: &mut Program, offset: usize) {
@@ -568,6 +572,7 @@ fn shift_spans(program: &mut Program, offset: usize) {
         .chain(program.structs.iter_mut().map(|item| &mut item.span))
         .chain(program.enums.iter_mut().map(|item| &mut item.span))
         .chain(program.functions.iter_mut().map(|item| &mut item.span))
+        .chain(program.consts.iter_mut().map(|item| &mut item.span))
     {
         span.start += offset;
         span.end += offset;
