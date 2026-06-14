@@ -11,9 +11,13 @@ path = "src/main.rs"
 [dependencies]
 anyhow.workspace = true
 clap.workspace = true
-rustify-analyzer = { path = "../rustify-analyzer" }
-rustify-codegen-rust = { path = "../rustify-codegen-rust" }
-rustify-ir = { path = "../rustify-ir" }
-rustify-parser = { path = "../rustify-parser" }
+rustify-analyzer = { path = "../rustify-analyzer", version = "0.1.0" }
+rustify-codegen-rust = { path = "../rustify-codegen-rust", version = "0.1.0" }
+rustify-ir = { path = "../rustify-ir", version = "0.1.0" }
+rustify-parser = { path = "../rustify-parser", version = "0.1.0" }
 serde.workspace = true
 serde_json.workspace = true
+
+[[bench]]
+name = "compiler_bench"
+harness = false

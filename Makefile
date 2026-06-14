@@ -1,4 +1,4 @@
-.PHONY: build-dev build-release podman-build docker-build test clean help
+.PHONY: build-dev build-release podman-build docker-build test bench package clean help
 
 # Comportamiento por defecto
 .DEFAULT_GOAL := help
@@ -10,6 +10,8 @@ help:
 	@echo "  make podman-build   - Construye la imagen de contenedor de Rustify usando Podman"
 	@echo "  make docker-build   - Construye la imagen de contenedor de Rustify usando Docker"
 	@echo "  make test           - Ejecuta los tests del compilador"
+	@echo "  make bench          - Ejecuta los benchmarks de compilación"
+	@echo "  make package        - Empaqueta crates y módulos para su distribución"
 	@echo "  make clean          - Limpia los archivos compilados de Cargo"
 
 # Build en modo desarrollo (debug)
@@ -31,6 +33,15 @@ docker-build:
 test:
 	cargo test
 
+# Ejecutar benchmarks
+bench:
+	cargo bench --package rustify-cli --bench compiler_bench
+
+# Empaquetar artefactos para distribución
+package:
+	./scripts/package-all.sh
+
 # Limpiar compilación
 clean:
 	cargo clean
+	rm -rf dist-packages/

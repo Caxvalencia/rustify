@@ -26,8 +26,8 @@ Pendientes prioritarios:
 2. `[x]` Permitir helpers privados con el mismo nombre en módulos distintos sin colisiones.
 3. `[x]` Eliminar la duplicación de reglas entre ESLint y `rustify-analyzer`, mediante bindings o un formato de diagnósticos compartido.
 4. `[x]` Ampliar imports/exports: aliases, re-exports, default exports y rechazo explícito de ciclos.
-5. `[ ]` Embebido V8 o runtime híbrido equivalente, con límites claros de interoperabilidad.
-6. `[ ]` Endurecer distribución 1.0: paquetes publicables, pruebas reales de VSCode, benchmarks, fuzzing y matriz de compatibilidad.
+5. `[-]` Embebido V8 o runtime híbrido equivalente (fallback externo en Node 22 completado).
+6. `[-]` Endurecer distribución 1.0: benchmarks y fuzzing de robustez completados; pendientes paquetes publicables y matriz de compatibilidad multiplataforma.
 
 ## 1. Visión del proyecto
 

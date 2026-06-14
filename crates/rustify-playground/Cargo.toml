@@ -11,8 +11,8 @@ path = "src/main.rs"
 [dependencies]
 anyhow.workspace = true
 axum.workspace = true
-rustify-analyzer = { path = "../rustify-analyzer" }
-rustify-codegen-rust = { path = "../rustify-codegen-rust" }
-rustify-parser = { path = "../rustify-parser" }
+rustify-analyzer = { path = "../rustify-analyzer", version = "0.1.0" }
+rustify-codegen-rust = { path = "../rustify-codegen-rust", version = "0.1.0" }
+rustify-parser = { path = "../rustify-parser", version = "0.1.0" }
 serde.workspace = true
 tokio = { version = "1", features = ["macros", "net", "rt-multi-thread"] }

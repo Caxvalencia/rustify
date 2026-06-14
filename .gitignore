@@ -4,5 +4,6 @@ node_modules/
 *.log
 .vscode-test/
 temp-test-files/
-
-
+/dist-packages
+*.tgz
+*.vsix
