@@ -2,21 +2,46 @@
   "name": "vscode-rustify",
   "displayName": "Rustify",
   "version": "0.1.0",
+  "description": "Language support for the Rustify TypeScript-to-Rust compiler.",
+  "license": "MIT",
+  "categories": ["Programming Languages", "Linters"],
+  "files": ["src", "README.md", "package.json"],
   "engines": {
     "vscode": "^1.90.0"
   },
   "activationEvents": ["onLanguage:typescript"],
   "main": "./src/extension.js",
+  "scripts": {
+    "test": "node --check src/extension.js"
+  },
   "contributes": {
     "commands": [
       {
         "command": "rustify.preview",
         "title": "Rustify: Preview Translation"
+      },
+      {
+        "command": "rustify.check",
+        "title": "Rustify: Check Current File"
       }
-    ]
+    ],
+    "configuration": {
+      "title": "Rustify",
+      "properties": {
+        "rustify.server.path": {
+          "type": "string",
+          "default": "rustify-lsp",
+          "description": "Path to the Rustify language server executable."
+        },
+        "rustify.cli.path": {
+          "type": "string",
+          "default": "rustify",
+          "description": "Path to the Rustify CLI executable."
+        }
+      }
+    }
   },
   "dependencies": {
     "vscode-languageclient": "^9.0.1"
   }
 }
-
