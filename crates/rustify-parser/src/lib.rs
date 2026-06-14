@@ -16,9 +16,12 @@ pub enum Type {
     Number,
     Boolean,
     Void,
+    JsonValue,
     Named(String),
     Array(Box<Type>),
     Optional(Box<Type>),
+    Result(Box<Type>, Box<Type>),
+    Promise(Box<Type>),
     Unsupported(String),
 }
 
@@ -52,6 +55,7 @@ pub struct Parameter {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FunctionDecl {
     pub name: String,
+    pub is_async: bool,
     pub params: Vec<Parameter>,
     pub return_type: Option<Type>,
     pub body: String,
@@ -59,8 +63,18 @@ pub struct FunctionDecl {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ImportDecl {
+    pub names: Vec<String>,
+    pub source: String,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Program {
     pub source: String,
+    pub unsupported_top_level: Vec<Span>,
+    pub imports: Vec<ImportDecl>,
+    pub exports: Vec<String>,
     pub structs: Vec<StructDecl>,
     pub enums: Vec<EnumDecl>,
     pub functions: Vec<FunctionDecl>,
@@ -78,6 +92,9 @@ pub fn parse(source: &str) -> Result<Program, ParseError> {
     validate_typescript(source)?;
     let mut program = Program {
         source: source.to_owned(),
+        unsupported_top_level: Vec::new(),
+        imports: Vec::new(),
+        exports: Vec::new(),
         structs: Vec::new(),
         enums: Vec::new(),
         functions: Vec::new(),
@@ -86,53 +103,131 @@ pub fn parse(source: &str) -> Result<Program, ParseError> {
     let mut cursor = 0;
     while cursor < source.len() {
         cursor = skip_space_and_comments(source, cursor);
+        if cursor >= source.len() {
+            break;
+        }
         let start = cursor;
         let (keyword, after_keyword) = next_word(source, cursor);
-        let after_keyword = if keyword == "export" {
-            let position = skip_space_and_comments(source, after_keyword);
-            next_word(source, position).1
+        let exported = keyword == "export";
+        let declaration_start = if exported {
+            skip_space_and_comments(source, after_keyword)
         } else {
-            after_keyword
+            cursor
         };
-        let actual_keyword = if keyword == "export" {
-            next_word(
-                source,
-                skip_space_and_comments(source, cursor + keyword.len()),
-            )
-            .0
+        let (declaration_keyword, after_declaration_keyword) = next_word(source, declaration_start);
+        let (actual_keyword, after_keyword, is_async) = if declaration_keyword == "async" {
+            let function_start = skip_space_and_comments(source, after_declaration_keyword);
+            let (actual_keyword, after_keyword) = next_word(source, function_start);
+            (actual_keyword, after_keyword, true)
         } else {
-            keyword
+            (declaration_keyword, after_declaration_keyword, false)
         };
 
         match actual_keyword {
+            "import" => {
+                let (declaration, end) = parse_import(source, start, after_keyword)?;
+                program.imports.push(declaration);
+                cursor = end;
+            }
             "type" => {
                 let (declaration, end) = parse_struct(source, start, after_keyword, false)?;
                 if let Some(declaration) = declaration {
+                    if exported {
+                        program.exports.push(declaration.name.clone());
+                    }
                     program.structs.push(declaration);
+                } else {
+                    program.unsupported_top_level.push(Span { start, end });
                 }
                 cursor = end;
             }
             "interface" => {
                 let (declaration, end) = parse_struct(source, start, after_keyword, true)?;
                 if let Some(declaration) = declaration {
+                    if exported {
+                        program.exports.push(declaration.name.clone());
+                    }
                     program.structs.push(declaration);
                 }
                 cursor = end;
             }
             "enum" => {
                 let (declaration, end) = parse_enum(source, start, after_keyword)?;
+                if exported {
+                    program.exports.push(declaration.name.clone());
+                }
                 program.enums.push(declaration);
                 cursor = end;
             }
             "function" => {
-                let (declaration, end) = parse_function(source, start, after_keyword)?;
+                let (declaration, end) = parse_function(source, start, after_keyword, is_async)?;
+                if exported {
+                    program.exports.push(declaration.name.clone());
+                }
                 program.functions.push(declaration);
                 cursor = end;
             }
-            _ => cursor = advance_top_level(source, cursor),
+            _ => {
+                cursor = advance_top_level(source, cursor);
+                program
+                    .unsupported_top_level
+                    .push(Span { start, end: cursor });
+            }
         }
     }
     Ok(program)
+}
+
+fn parse_import(
+    source: &str,
+    start: usize,
+    mut cursor: usize,
+) -> Result<(ImportDecl, usize), ParseError> {
+    cursor = skip_space_and_comments(source, cursor);
+    if source.as_bytes().get(cursor) != Some(&b'{') {
+        return Err(ParseError::Declaration(cursor));
+    }
+    let names_end =
+        matching_delimiter(source, cursor, b'{', b'}').ok_or(ParseError::Declaration(cursor))?;
+    let names = split_top_level(&source[cursor + 1..names_end], &[','])
+        .into_iter()
+        .filter_map(|name| {
+            let name = name.trim();
+            (!name.is_empty()).then(|| name.to_owned())
+        })
+        .collect::<Vec<_>>();
+    if names.iter().any(|name| name.contains(" as ")) {
+        return Err(ParseError::Declaration(cursor));
+    }
+    cursor = skip_space_and_comments(source, names_end + 1);
+    let (from, after_from) = next_word(source, cursor);
+    if from != "from" {
+        return Err(ParseError::Declaration(cursor));
+    }
+    cursor = skip_space_and_comments(source, after_from);
+    let quote = *source
+        .as_bytes()
+        .get(cursor)
+        .ok_or(ParseError::Declaration(cursor))?;
+    if !matches!(quote, b'\'' | b'"') {
+        return Err(ParseError::Declaration(cursor));
+    }
+    let source_end = source[cursor + 1..]
+        .find(quote as char)
+        .map(|offset| cursor + offset + 1)
+        .ok_or(ParseError::Declaration(cursor))?;
+    let end = source[source_end + 1..]
+        .find([';', '\n'])
+        .map(|offset| source_end + offset + 2)
+        .unwrap_or(source_end + 1);
+    Ok((
+        ImportDecl {
+            names,
+            source: source[cursor + 1..source_end].to_owned(),
+            span: Span { start, end },
+        },
+        end,
+    ))
 }
 
 fn validate_typescript(source: &str) -> Result<(), ParseError> {
@@ -236,6 +331,7 @@ fn parse_function(
     source: &str,
     start: usize,
     mut cursor: usize,
+    is_async: bool,
 ) -> Result<(FunctionDecl, usize), ParseError> {
     cursor = skip_space_and_comments(source, cursor);
     let (name, after_name) = next_word(source, cursor);
@@ -271,6 +367,7 @@ fn parse_function(
     Ok((
         FunctionDecl {
             name: name.to_owned(),
+            is_async,
             params,
             return_type,
             body: source[cursor + 1..body_end].trim().to_owned(),
@@ -294,6 +391,25 @@ pub fn parse_type(input: &str) -> Type {
     {
         return Type::Array(Box::new(parse_type(inner)));
     }
+    if let Some(inner) = input
+        .strip_prefix("Result<")
+        .and_then(|value| value.strip_suffix('>'))
+    {
+        let arguments = split_top_level(inner, &[',']);
+        if arguments.len() == 2 {
+            return Type::Result(
+                Box::new(parse_type(arguments[0])),
+                Box::new(parse_type(arguments[1])),
+            );
+        }
+        return Type::Unsupported(input.to_owned());
+    }
+    if let Some(inner) = input
+        .strip_prefix("Promise<")
+        .and_then(|value| value.strip_suffix('>'))
+    {
+        return Type::Promise(Box::new(parse_type(inner)));
+    }
     let union = split_top_level(input, &['|']);
     if union.len() == 2 {
         let left = union[0].trim();
@@ -311,8 +427,9 @@ pub fn parse_type(input: &str) -> Type {
         "number" => Type::Number,
         "boolean" => Type::Boolean,
         "void" => Type::Void,
+        "JsonValue" => Type::JsonValue,
         "any" | "unknown" | "null" | "undefined" => Type::Unsupported(input.to_owned()),
-        value if value.is_empty() => Type::Unsupported("<missing>".to_owned()),
+        "" => Type::Unsupported("<missing>".to_owned()),
         value => Type::Named(value.to_owned()),
     }
 }
@@ -438,5 +555,45 @@ mod tests {
         assert_eq!(program.structs[0].fields.len(), 2);
         assert_eq!(program.enums[0].variants.len(), 2);
         assert_eq!(program.functions[0].return_type, Some(Type::String));
+    }
+
+    #[test]
+    fn parses_named_imports() {
+        let program = parse("import { User, greet } from \"./user\"\n").unwrap();
+        assert_eq!(program.imports[0].names, ["User", "greet"]);
+        assert_eq!(program.imports[0].source, "./user");
+    }
+
+    #[test]
+    fn tracks_exported_declarations() {
+        let program =
+            parse("type Private = { value: string }\nexport function public(): void {}\n").unwrap();
+        assert_eq!(program.exports, ["public"]);
+    }
+
+    #[test]
+    fn parses_json_and_result_types() {
+        assert_eq!(parse_type("JsonValue"), Type::JsonValue);
+        assert_eq!(
+            parse_type("Result<JsonValue, string>"),
+            Type::Result(Box::new(Type::JsonValue), Box::new(Type::String))
+        );
+    }
+
+    #[test]
+    fn parses_async_functions_and_promises() {
+        let program =
+            parse("export async function load(): Promise<string> { return \"ready\" }").unwrap();
+        assert!(program.functions[0].is_async);
+        assert_eq!(
+            program.functions[0].return_type,
+            Some(Type::Promise(Box::new(Type::String)))
+        );
+    }
+
+    #[test]
+    fn tracks_unsupported_top_level_code() {
+        let program = parse("const value: string = \"hello\"\nconsole.log(value)\n").unwrap();
+        assert_eq!(program.unsupported_top_level.len(), 2);
     }
 }
