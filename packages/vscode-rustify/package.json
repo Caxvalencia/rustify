@@ -1,5 +1,6 @@
 {
   "name": "vscode-rustify",
+  "publisher": "caxvalencia",
   "displayName": "Rustify",
   "version": "0.1.0",
   "description": "Language support for the Rustify TypeScript-to-Rust compiler.",
@@ -12,7 +13,8 @@
   "activationEvents": ["onLanguage:typescript"],
   "main": "./src/extension.js",
   "scripts": {
-    "test": "node --check src/extension.js"
+    "test": "node --check src/extension.js",
+    "test-e2e": "node ./src/test/runTest.js"
   },
   "contributes": {
     "commands": [
@@ -43,5 +45,10 @@
   },
   "dependencies": {
     "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "@vscode/test-electron": "^2.4.1",
+    "glob": "^10.4.1",
+    "mocha": "^10.4.0"
   }
 }

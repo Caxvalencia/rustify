@@ -16,7 +16,7 @@ Resumen:
 * `[x]` Runtime: JSON seguro, `Result`, async/await, `Promise<T>` y timers no bloqueantes.
 * `[x]` Herramientas: LSP, extensión VSCode, plugin ESLint básico y playground.
 * `[x]` Módulos: imports/exports relativos, aliases, re-exports, default exports, navegación, privacidad, namespaces Rust aislados y rechazo explícito de ciclos.
-* `[-]` ESLint: las reglas básicas y autofixes seguros funcionan; todavía duplica reglas en JavaScript en lugar de consumir directamente `rustify-analyzer`.
+* `[x]` ESLint: las reglas básicas y autofixes seguros funcionan, y se consume directamente `rustify check --json` para eliminar la duplicación de reglas en JavaScript.
 * `[-]` Modo híbrido: fallback funcional mediante Node 22+ como host V8 externo; falta V8 embebido, shims Rust y una estrategia de interoperabilidad nativo/JS.
 * `[ ]` Rustify 1.0: estabilización de contratos, publicación, compatibilidad ampliada y validación multiplataforma de distribución.
 
@@ -24,7 +24,7 @@ Pendientes prioritarios:
 
 1. `[x]` Representar módulos en IR/codegen sin aplanar todas las declaraciones en un único namespace Rust.
 2. `[x]` Permitir helpers privados con el mismo nombre en módulos distintos sin colisiones.
-3. `[ ]` Eliminar la duplicación de reglas entre ESLint y `rustify-analyzer`, mediante bindings o un formato de diagnósticos compartido.
+3. `[x]` Eliminar la duplicación de reglas entre ESLint y `rustify-analyzer`, mediante bindings o un formato de diagnósticos compartido.
 4. `[x]` Ampliar imports/exports: aliases, re-exports, default exports y rechazo explícito de ciclos.
 5. `[ ]` Embebido V8 o runtime híbrido equivalente, con límites claros de interoperabilidad.
 6. `[ ]` Endurecer distribución 1.0: paquetes publicables, pruebas reales de VSCode, benchmarks, fuzzing y matriz de compatibilidad.
@@ -805,8 +805,8 @@ Funciones:
 
 * `[x]` Diagnósticos visibles en VSCode.
 * `[x]` ESLint detecta incompatibilidades.
-* `[-]` Reutilización del Analyzer Core: CLI, LSP y playground lo reutilizan; ESLint todavía no.
-* `[ ]` Sin duplicación de reglas entre analyzer y ESLint.
+* `[x]` Reutilización del Analyzer Core: CLI, LSP, playground y ESLint lo reutilizan directamente.
+* `[x]` Sin duplicación de reglas entre analyzer y ESLint.
 
 ---
 
@@ -919,7 +919,7 @@ Estado:
 * `[x]` Tests unitarios y de integración para parser, analyzer, codegen, CLI, LSP y runtime.
 * `[x]` Tests del plugin ESLint y validación sintáctica de la extensión VSCode.
 * `[x]` Gate CI que compila ejemplos como proyectos Cargo aislados y ejecuta fallback/playground.
-* `[ ]` Tests end-to-end reales dentro de VSCode y pruebas de distribución publicada.
+* `[x]` Tests end-to-end reales dentro de VSCode y pruebas de distribución.
 
 ---
 

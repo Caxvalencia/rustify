@@ -2,4 +2,7 @@
 /dist-rust
 node_modules/
 *.log
+.vscode-test/
+temp-test-files/
+
 

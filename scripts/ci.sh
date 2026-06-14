@@ -22,6 +22,7 @@ npm ci --prefix packages/eslint-plugin-rustify
 npm test --prefix packages/eslint-plugin-rustify
 npm ci --prefix packages/vscode-rustify
 npm test --prefix packages/vscode-rustify
+npm run test-e2e --prefix packages/vscode-rustify
 
 examples=(
   examples/greet.ts
