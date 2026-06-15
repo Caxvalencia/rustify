@@ -1,6 +1,10 @@
 import { execSync } from "child_process";
 import fs from "fs";
 import path from "path";
+import { fileURLToPath } from "url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 export default {
   meta: {
@@ -19,11 +23,25 @@ export default {
           return;
         }
 
-        // Buscamos la ruta al CLI compilado en release en target/release/rustify
-        // Subimos desde packages/eslint-plugin-rustify/src/rules a la raíz del workspace
-        const cliPath = path.resolve(process.cwd(), "../../target/release/rustify");
+        // Buscamos la ruta al CLI compilado (tanto en release como en debug)
+        const workspaceRoot = path.resolve(__dirname, "../../../..");
+        const isWindows = process.platform === "win32";
+        const binName = isWindows ? "rustify.exe" : "rustify";
 
-        if (!fs.existsSync(cliPath)) {
+        const paths = [
+          path.join(workspaceRoot, "target/release", binName),
+          path.join(workspaceRoot, "target/debug", binName),
+        ];
+
+        let cliPath = "";
+        for (const p of paths) {
+          if (fs.existsSync(p)) {
+            cliPath = p;
+            break;
+          }
+        }
+
+        if (!cliPath) {
           return;
         }
 
