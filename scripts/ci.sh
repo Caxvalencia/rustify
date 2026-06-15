@@ -22,7 +22,12 @@ npm ci --prefix packages/eslint-plugin-rustify
 npm test --prefix packages/eslint-plugin-rustify
 npm ci --prefix packages/vscode-rustify
 npm test --prefix packages/vscode-rustify
-npm run test-e2e --prefix packages/vscode-rustify
+
+if [[ "$OSTYPE" == "linux-gnu"* ]] && command -v xvfb-run &> /dev/null; then
+  xvfb-run npm run test-e2e --prefix packages/vscode-rustify
+else
+  npm run test-e2e --prefix packages/vscode-rustify
+fi
 
 examples=(
   examples/greet.ts
