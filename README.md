@@ -1,61 +1,53 @@
 # Rustify
 
 <p align="center">
-  <img src="assets/logo.png" alt="Rustify Logo" width="160" />
+  <img src="assets/logo.png" alt="Logo de Rustify" width="160" />
 </p>
 
-Rustify compiles a deliberately strict subset of TypeScript into safe, readable Rust.
-The current `1.0.0` release includes an Oxc-backed parser, shared analyzer, typed IR, Rust
-code generator, CLI, language server, ESLint plugin, and VS Code extension.
+Rustify compila un subconjunto deliberadamente estricto de TypeScript a Rust seguro y legible.
+La versión actual `1.0.0` incluye un analizador sintáctico respaldado por Oxc, un analizador compartido, una representación intermedia (IR) tipada, un generador de código de Rust, una interfaz de línea de comandos (CLI), un servidor de lenguaje (LSP), un plugin de ESLint y una extensión de VS Code.
 
-## Supported in 1.0
+## Soportado en 1.0
 
-- Object type aliases and simple interfaces to Rust structs
-- Typed object literals, nested structs, and omitted optional fields
-- Reusable non-`Copy` field access through explicit Rust clones
-- Reusable non-`Copy` bindings across calls and assignments
-- Typed empty and populated array literals
-- Nested struct property access and `array.length`
-- Safe `array[index]` reads, native `array.includes`/`join`, mutable-local
-  `array.push`/`pop`, and string methods
-- Simple enums
-- Typed functions
-- Explicit empty `return;` in `void` functions
-- `string`, `number`, `boolean`, `void`, arrays, optional fields, and nullable unions
-- Variables, assignments, function calls, property access, and template literals
-- Checked binding mutability: `const` and parameters cannot be reassigned; `let` can
-- Arithmetic, remainder, comparisons, string concatenation, and boolean logic
-- Typed conditional (`condition ? value : fallback`) expressions
-- Native numeric `Math` helpers: `abs`, `floor`, `ceil`, `round`, `min`, `max`, and `pow`
-- Typed `if`/`else`, `while`, and `for...of` control flow with `break` and `continue`
-- Exhaustive return validation for every non-`void` function path
-- Relative named and aliased imports, transitive named re-exports, and exported
-  declarations across isolated `.ts` modules
-- Named default function/type exports and default imports
-- Rust module emission with explicit imports, private declaration isolation, and safe
-  generated module identifiers
-- Explicit rejection of cyclic native module graphs
-- Enum variants, nullable values (`Some`/`None`), and `void` functions
-- Safe `Result<T, E>` values and JSON parsing/stringifying through `rustify-runtime`
-- Native `async` functions, `await`, and `Promise<T>` lowering to Rust futures
-- Typed multi-argument `console.log(...values)` lowering to one Rust `println!`
-- Idiomatic Rust identifier generation from TypeScript camelCase
-- UpperCamelCase Rust generation for type and enum variant identifiers
-- Early diagnostics for names that collide after Rust identifier normalization
-- Shared diagnostics for unsupported dynamic TypeScript
+- Alias de tipos de objetos e interfaces simples a structs de Rust
+- Literales de objetos tipados, structs anidados y campos opcionales omitidos
+- Acceso reutilizable a campos que no son `Copy` mediante clones explícitos de Rust
+- Enlaces reutilizables que no son `Copy` entre llamadas y asignaciones
+- Literales de arreglos vacíos y poblados tipados
+- Acceso a propiedades de structs anidados y `array.length`
+- Lecturas seguras de `array[index]`, métodos nativos `array.includes`/`join`, `array.push`/`pop` locales mutables y métodos de cadenas (strings)
+- Enums simples
+- Funciones tipadas
+- Instrucción `return;` explícita y vacía en funciones `void`
+- `string`, `number`, `boolean`, `void`, arreglos, campos opcionales y uniones que admiten nulos (nullable)
+- Variables, asignaciones, llamadas a funciones, acceso a propiedades y plantillas de cadena
+- Mutabilidad de enlaces comprobada: `const` y parámetros no se pueden reasignar; `let` sí
+- Aritmética, residuo (módulo), comparaciones, concatenación de cadenas y lógica booleana
+- Expresiones condicionales tipadas (`condicion ? valor : alternativa`)
+- Ayudantes numéricos nativos de Math: `abs`, `floor`, `ceil`, `round`, `min`, `max` y `pow`
+- Flujo de control tipado `if`/`else`, `while` y `for...of` con `break` y `continue`
+- Validación exhaustiva de retorno para cada ruta de funciones no `void`
+- Importaciones relativas con nombre y alias, reexportaciones con nombre transitivas y declaraciones exportadas a través de módulos `.ts` aislados
+- Exportaciones por defecto con nombre de funciones/tipos e importaciones por defecto
+- Emisión de módulos de Rust con importaciones explícitas, aislamiento de declaraciones privadas e identificadores de módulo generados de forma segura
+- Rechazo explícito de grafos de módulos nativos cíclicos
+- Variantes de enums, valores nulos (`Some`/`None`) y funciones `void`
+- Valores seguros `Result<T, E>` y parseo/conversión a cadena de JSON a través de `rustify-runtime`
+- Funciones `async` nativas, `await` y transformación de `Promise<T>` a futures de Rust
+- Transformación de `console.log(...valores)` tipados con múltiples argumentos a un solo `println!` de Rust
+- Generación de identificadores de Rust idiomáticos a partir del camelCase de TypeScript
+- Generación en UpperCamelCase de Rust para identificadores de tipos y variantes de enums
+- Diagnósticos tempranos para nombres que colisionan tras la normalización de identificadores de Rust
+- Diagnósticos compartidos para TypeScript dinámico no soportado
 
-Dynamic TypeScript features such as `any`, `unknown`, `eval`, decorators, namespaces,
-prototype mutation, and non-nullable unions are rejected.
+Las características dinámicas de TypeScript como `any`, `unknown`, `eval`, decoradores, espacios de nombres (namespaces), mutación de prototipos y uniones no nulas son rechazadas.
 
-`array.push(value)` is supported only as a standalone statement on a local array
-declared with `let`; using its JavaScript length return value is rejected.
-`array.pop()` returns `T | null`, represented as Rust `Option<T>`.
-`array[index]` also returns `T | null`; negative, fractional, and out-of-bounds
-indices produce `null` instead of panicking.
-Nullable values support safe `isSome()`, `isNone()`, and `unwrapOr(fallback)`
-operations. Rustify deliberately does not expose a panicking `unwrap()`.
+`array.push(value)` se soporta únicamente como una declaración independiente sobre un arreglo local declarado con `let`; el uso de su valor de retorno de longitud en JavaScript es rechazado.
+`array.pop()` retorna `T | null`, representado como `Option<T>` en Rust.
+`array[index]` también retorna `T | null`; los índices negativos, fraccionarios o fuera de límites producen `null` en lugar de causar pánico (panic).
+Los valores que admiten nulos (nullable) soportan operaciones seguras como `isSome()`, `isNone()` y `unwrapOr(fallback)`. Rustify deliberadamente no expone una función `unwrap()` que cause pánico.
 
-Safe JSON APIs return `Result` instead of throwing:
+Las APIs seguras de JSON retornan un `Result` en lugar de lanzar excepciones:
 
 ```ts
 function parseDocument(input: string): Result<JsonValue, string> {
@@ -63,13 +55,11 @@ function parseDocument(input: string): Result<JsonValue, string> {
 }
 ```
 
-Result values support safe `isOk()`, `isErr()`, and `unwrapOr(fallback)`
-operations. Panicking `unwrap()` and `unwrapErr()` operations are intentionally
-unsupported.
+Los valores `Result` soportan operaciones seguras como `isOk()`, `isErr()` y `unwrapOr(fallback)`. Las operaciones `unwrap()` y `unwrapErr()` que provocan pánico no están soportadas intencionalmente.
 
-Cargo projects that use JSON automatically vendor `rustify-runtime`.
+Los proyectos de Cargo que usan JSON incorporan automáticamente la dependencia `rustify-runtime`.
 
-Async Rustify functions declare `Promise<T>` and compile to native Rust `async fn`:
+Las funciones asíncronas de Rustify declaran `Promise<T>` y se compilan a `async fn` nativo de Rust:
 
 ```ts
 async function loadMessage(): Promise<string> {
@@ -81,26 +71,13 @@ async function relayMessage(): Promise<string> {
 }
 ```
 
-`Promise<T>` is supported as a direct async return or parameter value. Promise
-fields, nested Promise containers, and stored Promise bindings are rejected
-because Rust cannot represent them with the generated `impl Future` types.
-Promises used as standalone statements must be awaited because Rust futures are
-lazy and otherwise would never execute. Ignored `Option` and `Result` values are
-discarded explicitly in generated Rust to keep intentional TypeScript
-expression statements warning-free.
-Direct Promise parameters must be consumed exactly once because generated Rust
-futures are move-only. Ordinary unused parameters are explicitly acknowledged
-by generated Rust so valid Rustify functions remain warning-free.
+`Promise<T>` está soportada como un retorno asíncrono directo o valor de parámetro. Los campos de tipo Promise, los contenedores Promise anidados y los enlaces almacenados que involucran Promise son rechazados debido a que Rust no puede representarlos con los tipos `impl Future` generados.
+Las promesas utilizadas como declaraciones independientes deben ser esperadas con `await` porque los futures de Rust son perezosos (lazy) y, de lo contrario, nunca se ejecutarían. Los valores `Option` y `Result` ignorados se descartan explícitamente en el código de Rust generado para mantener libres de advertencias (warnings) las declaraciones de expresiones intencionales de TypeScript.
+Los parámetros directos de tipo Promise deben consumirse exactamente una vez porque los futures generados en Rust son de tipo move-only (solo transferencia). Los parámetros ordinarios no utilizados son declarados explícitamente en el Rust generado para que las funciones válidas de Rustify permanezcan libres de advertencias.
 
-Local `let` bindings only become Rust `mut` bindings when later code actually
-mutates them. Unused locals and `for...of` bindings are also acknowledged
-explicitly, keeping generated projects compatible with `-D warnings`. Usage and
-mutation analysis respects lexical shadowing between parameters, local
-variables, branches, and loop bindings. Statements after terminal control flow
-are omitted from generated Rust so unreachable TypeScript does not introduce
-Rust warnings or affect mutability analysis.
+Los enlaces `let` locales solo se convierten en enlaces `mut` de Rust cuando el código posterior realmente los muta. Las variables locales no utilizadas y los enlaces de bucles `for...of` también se declaran explícitamente, manteniendo los proyectos generados compatibles con la directiva `-D warnings`. El análisis de uso y mutación respeta el sombreado léxico (lexical shadowing) entre parámetros, variables locales, ramas y enlaces de bucles. Las declaraciones posteriores al flujo de control terminal se omiten del código Rust generado para que el código TypeScript inalcanzable no introduzca advertencias en Rust ni afecte el análisis de mutabilidad.
 
-The async runtime provides non-blocking timers:
+El entorno de ejecución asíncrono proporciona temporizadores no bloqueantes:
 
 ```ts
 async function pause(milliseconds: number): Promise<void> {
@@ -108,13 +85,13 @@ async function pause(milliseconds: number): Promise<void> {
 }
 ```
 
-## Hybrid mode
+## Modo Híbrido
 
-Hybrid mode (`--mode hybrid`) enables native Rust compilation combined with dynamic Node.js fallback execution at the function level:
-1. **Function-Level Annotation**: Mark specific functions with a `/** @hybrid */` JSDoc comment.
-2. **Type Checking Bypass**: Inside hybrid functions, dynamic types like `any` are allowed and will not stop native compilation.
-3. **IPC Fallback Lowering**: The body of a hybrid function is replaced in the generated Rust with a synchronous IPC/JSON call (`rustify_runtime::call_js_fallback`).
-4. **Source Copying**: Original TypeScript sources are automatically copied to the `fallback/` directory in your compilation output to be loaded dynamically by Node.js using `--experimental-transform-types` at runtime.
+El modo híbrido (`--mode hybrid`) permite la compilación nativa en Rust combinada con una ejecución alternativa (fallback) dinámica de Node.js a nivel de función:
+1. **Anotación a nivel de función**: Marca funciones específicas con un comentario JSDoc `/** @hybrid */`.
+2. **Evasión de comprobación de tipos**: Dentro de las funciones híbridas se permiten tipos dinámicos como `any` y no detendrán la compilación nativa.
+3. **Transformación a fallback IPC**: El cuerpo de una función híbrida se reemplaza en el código Rust generado por una llamada síncrona de IPC/JSON (`rustify_runtime::call_js_fallback`).
+4. **Copiado de código fuente**: El código fuente original de TypeScript se copia automáticamente al directorio `fallback/` en tu salida de compilación para ser cargado dinámicamente por Node.js usando `--experimental-transform-types` en tiempo de ejecución.
 
 ```json
 {
@@ -126,9 +103,9 @@ Hybrid mode (`--mode hybrid`) enables native Rust compilation combined with dyna
 }
 ```
 
-Native mode remains the default and continues rejecting unsupported dynamic TypeScript unless explicitly annotated with `/** @hybrid */`.
+El modo nativo sigue siendo el predeterminado y continúa rechazando el TypeScript dinámico no soportado a menos que esté explícitamente anotado con `/** @hybrid */`.
 
-## Commands
+## Comandos
 
 ```bash
 cargo run -p rustify-cli -- check examples/greet.ts
@@ -139,7 +116,7 @@ cargo run -p rustify-cli -- compile examples/greet.ts --out dist-rust --cargo
 cargo run -p rustify-cli -- init my-rustify-project
 ```
 
-Inside an initialized project, commands resolve `rustify.json` automatically:
+Dentro de un proyecto inicializado, los comandos resuelven `rustify.json` automáticamente:
 
 ```bash
 rustify check
@@ -149,11 +126,9 @@ rustify explain
 rustify --config path/to/rustify.json compile --out custom-output
 ```
 
-`rustify explain` prints the inferred Rust signature, statement-level lowering
-decisions, safe collection/runtime mappings, and the generated Rust source. Use
-`--json` to inspect the complete typed IR.
+`rustify explain` imprime la firma de Rust inferida, las decisiones de transformación a nivel de instrucción, los mapeos de colecciones seguros, el entorno de ejecución y el código fuente de Rust generado. Usa `--json` para inspeccionar la representación intermedia (IR) tipada completa.
 
-Project configuration:
+Configuración del proyecto:
 
 ```json
 {
@@ -164,33 +139,32 @@ Project configuration:
 }
 ```
 
-## Ecosystem & Tools
+## Ecosistema y Herramientas
 
-Rustify features a complete developer ecosystem consisting of multiple specialized tools. Explore the detailed documentation for each component below:
+Rustify cuenta con un ecosistema de desarrollo completo que consta de varias herramientas especializadas. Explora la documentación detallada de cada componente a continuación:
 
-| Tool | Icon | Description | Guide |
+| Herramienta | Icono | Descripción | Guía |
 | :--- | :---: | :--- | :--- |
-| **CLI & Compiler** | <img src="assets/icon-cli.png" width="40" height="40" /> | Transpile TypeScript into safe, warning-free Rust. | [CLI Guide](docs/cli.md) |
-| **Language Server (LSP)** | <img src="assets/icon-lsp.png" width="40" height="40" /> | Real-time diagnostics, Rust-equivalent hovers, and semantic navigation. | [LSP Guide](docs/lsp.md) |
-| **ESLint Plugin** | <img src="assets/icon-eslint.png" width="40" height="40" /> | Static compatibility checks built directly into Node.js tools. | [ESLint Guide](docs/eslint.md) |
-| **VS Code Extension** | <img src="assets/icon-vscode.png" width="40" height="40" /> | Native editor integration with real-time translation preview panels. | [VS Code Guide](docs/vscode.md) |
-| **Interactive Playground** | <img src="assets/icon-playground.png" width="40" height="40" /> | Web-based editor sandbox to experiment with compilation directly. | [Playground Guide](docs/playground.md) |
-| **Globals Pattern** | <img src="assets/logo.png" width="40" height="40" /> | Design pattern for managing global constants and variables natively. | [Globals Guide](docs/globals.md) |
+| **CLI y Compilador** | <img src="assets/icon-cli.png" width="40" height="40" /> | Transpila TypeScript a Rust seguro y libre de advertencias. | [Guía de CLI](docs/cli.md) |
+| **Servidor de Lenguaje (LSP)** | <img src="assets/icon-lsp.png" width="40" height="40" /> | Diagnósticos en tiempo real, tooltips equivalentes a Rust y navegación semántica. | [Guía de LSP](docs/lsp.md) |
+| **Plugin de ESLint** | <img src="assets/icon-eslint.png" width="40" height="40" /> | Comprobaciones estáticas de compatibilidad integradas directamente en las herramientas de Node.js. | [Guía de ESLint](docs/eslint.md) |
+| **Extensión de VS Code** | <img src="assets/icon-vscode.png" width="40" height="40" /> | Integración nativa con el editor con paneles de previsualización de traducción en tiempo real. | [Guía de VS Code](docs/vscode.md) |
+| **Playground Interactivo** | <img src="assets/icon-playground.png" width="40" height="40" /> | Sandbox de editor web para experimentar directamente con la compilación. | [Guía del Playground](docs/playground.md) |
+| **Patrón de Globales** | <img src="assets/logo.png" width="40" height="40" /> | Patrón de diseño para gestionar constantes y variables globales de forma nativa. | [Guía de Globales](docs/globals.md) |
 
-For further details on how the compiler works under the hood and how to leverage the hybrid IPC bridge, please read the [Architecture Guide](docs/architecture.md), [Hybrid Interoperability Bridge Guide](docs/hybrid.md), and [Globals Guide](docs/globals.md).
+Para obtener más detalles sobre el funcionamiento interno del compilador y cómo aprovechar el puente IPC híbrido, consulta la [Guía de Arquitectura](docs/architecture.md), la [Guía del Puente de Interoperabilidad Híbrido](docs/hybrid.md) y la [Guía de Globales](docs/globals.md).
 
-
-## Architecture
+## Arquitectura
 
 ```text
-Oxc TypeScript parser -> normalized AST -> shared analyzer -> typed IR -> Rust codegen
-                                              |
-                                              +-> CLI / LSP / editor tooling
+Oxc TypeScript parser -> AST normalizado -> analizador compartido -> IR tipada -> generación de código de Rust
+                                                |
+                                                +-> CLI / LSP / herramientas de editor
 ```
 
-This repository implements the native compiler/tooling milestones through basic async support, a synchronous hybrid fallback bridge, and a shared-pipeline browser playground. Embedded V8 and full TypeScript coverage remain later roadmap items.
+Este repositorio implementa los hitos del compilador y las herramientas nativas mediante soporte asíncrono básico, un puente síncrono híbrido de fallback y un playground de navegador con pipeline compartido. V8 embebido y la cobertura completa de TypeScript siguen siendo elementos del roadmap futuro.
 
-## Development
+## Desarrollo
 
 ```bash
 cargo fmt --all --check
@@ -198,7 +172,4 @@ cargo test --workspace
 ./scripts/ci.sh
 ```
 
-GitHub Actions runs the Rust workspace and editor packages on Linux, macOS, and
-Windows. The Linux integration gate additionally compiles every supported example
-as an isolated Cargo project, verifies the intentionally invalid example, and
-executes the external-V8 hybrid fallback and playground API.
+GitHub Actions ejecuta las pruebas del workspace de Rust y los paquetes del editor en Linux, macOS y Windows. El control de integración de Linux compila adicionalmente cada ejemplo soportado como un proyecto Cargo aislado, verifica el ejemplo intencionalmente inválido y ejecuta el fallback híbrido V8 externo junto con la API del playground.
