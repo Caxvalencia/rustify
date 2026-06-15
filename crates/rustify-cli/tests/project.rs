@@ -5,6 +5,12 @@ fn temporary_project(name: &str) -> PathBuf {
     std::env::temp_dir().join(format!("rustify-{name}-{}", std::process::id()))
 }
 
+const NPM_CMD: &str = if cfg!(target_os = "windows") {
+    "npm.cmd"
+} else {
+    "npm"
+};
+
 #[test]
 fn init_creates_a_usable_project_config() {
     let directory = temporary_project("init");
@@ -332,7 +338,7 @@ fn hybrid_mode_emits_and_runs_v8_fallback_for_dynamic_typescript() {
     assert_eq!(manifest["engine"], "external-v8-node");
     assert_eq!(manifest["diagnostics"][0]["code"], "SFT001");
     assert!(directory.join("dist/fallback/src/main.ts").is_file());
-    let run = Command::new("npm")
+    let run = Command::new(NPM_CMD)
         .args(["run", "--silent", "start"])
         .current_dir(directory.join("dist"))
         .output()
@@ -375,7 +381,7 @@ fn hybrid_mode_falls_back_for_top_level_behavior_native_would_drop() {
     )
     .unwrap();
     assert_eq!(manifest["diagnostics"][0]["code"], "SFT046");
-    let run = Command::new("npm")
+    let run = Command::new(NPM_CMD)
         .args(["run", "--silent", "start"])
         .current_dir(directory.join("dist"))
         .output()
@@ -420,7 +426,7 @@ fn hybrid_fallback_preserves_and_runs_relative_module_graph() {
     );
     assert!(directory.join("dist/fallback/src/main.ts").is_file());
     assert!(directory.join("dist/fallback/src/message.ts").is_file());
-    let run = Command::new("npm")
+    let run = Command::new(NPM_CMD)
         .args(["run", "--silent", "start"])
         .current_dir(directory.join("dist"))
         .output()
@@ -462,7 +468,7 @@ fn hybrid_v8_fallback_transforms_typescript_namespaces() {
         "{}",
         String::from_utf8_lossy(&compile.stderr)
     );
-    let run = Command::new("npm")
+    let run = Command::new(NPM_CMD)
         .args(["run", "--silent", "start"])
         .current_dir(directory.join("dist"))
         .output()
@@ -517,7 +523,7 @@ fn hybrid_fallback_handles_typescript_outside_normalized_parser_subset() {
     assert_eq!(manifest["target"], "javascript-fallback");
     assert!(manifest["compiler_error"].is_string());
     assert!(directory.join("dist/fallback/src/message.ts").is_file());
-    let run = Command::new("npm")
+    let run = Command::new(NPM_CMD)
         .args(["run", "--silent", "start"])
         .current_dir(directory.join("dist"))
         .output()
