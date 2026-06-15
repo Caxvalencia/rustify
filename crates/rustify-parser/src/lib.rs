@@ -234,7 +234,7 @@ pub fn parse(source: &str) -> Result<Program, ParseError> {
             }
             "const" => {
                 let (declaration, end) = parse_const(source, start, after_keyword)?;
-                
+
                 if exported {
                     if default_exported {
                         program.default_export = Some(declaration.name.clone());
@@ -492,7 +492,7 @@ fn parse_const(
     mut cursor: usize,
 ) -> Result<(ConstDecl, usize), ParseError> {
     cursor = skip_space_and_comments(source, cursor);
-    
+
     let (name, after_name) = next_word(source, cursor);
 
     if name.is_empty() {
@@ -500,7 +500,7 @@ fn parse_const(
     }
 
     cursor = skip_space_and_comments(source, after_name);
-    
+
     // Check for type annotation (optional)
     let ty = if source.as_bytes().get(cursor) == Some(&b':') {
         let type_start = skip_space_and_comments(source, cursor + 1);
@@ -521,22 +521,22 @@ fn parse_const(
     }
 
     cursor = skip_space_and_comments(source, cursor + 1);
-    
+
     // Parse the literal value up to a semicolon or newline
     let stmt_end = source[cursor..]
-        .find(|character: char| character == ';' || character == '\n')
+        .find([';', '\n'])
         .map(|offset| cursor + offset)
         .unwrap_or(source.len());
-        
+
     let val_str = source[cursor..stmt_end].trim();
     let value = parse_const_value(val_str).ok_or(ParseError::Declaration(cursor))?;
-    
+
     let end = if source.as_bytes().get(stmt_end) == Some(&b';') {
         stmt_end + 1
     } else {
         stmt_end
     };
-    
+
     Ok((
         ConstDecl {
             name: name.to_owned(),
@@ -823,16 +823,22 @@ mod tests {
         )
         .unwrap();
         assert_eq!(program.consts.len(), 3);
-        
+
         assert_eq!(program.consts[0].name, "appName");
         assert_eq!(program.consts[0].ty, None);
-        assert_eq!(program.consts[0].value, ConstValue::String("demo-app".to_owned()));
-        
+        assert_eq!(
+            program.consts[0].value,
+            ConstValue::String("demo-app".to_owned())
+        );
+
         assert_eq!(program.consts[1].name, "timeoutMs");
         assert_eq!(program.consts[1].ty, Some(Type::Number));
-        assert_eq!(program.consts[1].value, ConstValue::Number("2000".to_owned()));
+        assert_eq!(
+            program.consts[1].value,
+            ConstValue::Number("2000".to_owned())
+        );
         assert!(program.exports.contains(&"timeoutMs".to_owned()));
-        
+
         assert_eq!(program.consts[2].name, "isProd");
         assert_eq!(program.consts[2].ty, None);
         assert_eq!(program.consts[2].value, ConstValue::Boolean(true));

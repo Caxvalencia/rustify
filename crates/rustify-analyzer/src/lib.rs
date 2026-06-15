@@ -502,12 +502,7 @@ fn build_symbol_table(program: &Program, diagnostics: &mut Vec<Diagnostic>) -> S
                 .iter()
                 .map(|value| (&value.name, value.span)),
         )
-        .chain(
-            program
-                .consts
-                .iter()
-                .map(|value| (&value.name, value.span)),
-        )
+        .chain(program.consts.iter().map(|value| (&value.name, value.span)))
     {
         if !symbols.insert(item.0.clone()) {
             diagnostics.push(Diagnostic::error(
@@ -622,13 +617,11 @@ fn build_symbol_table(program: &Program, diagnostics: &mut Vec<Diagnostic>) -> S
     for constant in &program.consts {
         let ty = match &constant.ty {
             Some(t) => t.clone(),
-            None => {
-                match &constant.value {
-                    rustify_parser::ConstValue::String(_) => Type::String,
-                    rustify_parser::ConstValue::Number(_) => Type::Number,
-                    rustify_parser::ConstValue::Boolean(_) => Type::Boolean,
-                }
-            }
+            None => match &constant.value {
+                rustify_parser::ConstValue::String(_) => Type::String,
+                rustify_parser::ConstValue::Number(_) => Type::Number,
+                rustify_parser::ConstValue::Boolean(_) => Type::Boolean,
+            },
         };
         table.consts.insert(constant.name.clone(), ty);
     }
@@ -2594,13 +2587,11 @@ fn lower(program: &Program, symbols: &SymbolTable) -> ir::Program {
             .map(|constant| {
                 let ty = match &constant.ty {
                     Some(t) => lower_type(t),
-                    None => {
-                        match &constant.value {
-                            rustify_parser::ConstValue::String(_) => ir::Type::String,
-                            rustify_parser::ConstValue::Number(_) => ir::Type::F64,
-                            rustify_parser::ConstValue::Boolean(_) => ir::Type::Bool,
-                        }
-                    }
+                    None => match &constant.value {
+                        rustify_parser::ConstValue::String(_) => ir::Type::String,
+                        rustify_parser::ConstValue::Number(_) => ir::Type::F64,
+                        rustify_parser::ConstValue::Boolean(_) => ir::Type::Bool,
+                    },
                 };
                 let value_kind = match &constant.value {
                     rustify_parser::ConstValue::String(s) => ir::ExpressionKind::String(s.clone()),

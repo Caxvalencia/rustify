@@ -276,11 +276,7 @@ fn visibility_const(name: &str, exports: Option<&HashSet<&str>>) -> &'static str
                 normalized_exp == normalized_name
             });
 
-            if found {
-                "pub "
-            } else {
-                ""
-            }
+            if found { "pub " } else { "" }
         }
     }
 }
@@ -1344,7 +1340,10 @@ fn rust_callee(name: &str) -> String {
 }
 
 pub fn rust_identifier(name: &str) -> String {
-    if name.chars().all(|c| !c.is_alphabetic() || c.is_ascii_uppercase()) {
+    if name
+        .chars()
+        .all(|c| !c.is_alphabetic() || c.is_ascii_uppercase())
+    {
         return name.to_owned();
     }
 
