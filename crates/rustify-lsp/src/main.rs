@@ -1322,7 +1322,7 @@ mod tests {
 
     #[test]
     fn previews_generated_rust_from_open_document_content() {
-        let uri = Url::parse("file:///tmp/rustify-preview.ts").unwrap();
+        let uri = Url::from_file_path(std::env::temp_dir().join("rustify-preview.ts")).unwrap();
         let documents = HashMap::from([(
             uri.clone(),
             "function greet(name: string): string { return `Hi ${name}` }".to_owned(),
@@ -1334,7 +1334,8 @@ mod tests {
 
     #[test]
     fn preview_rejects_invalid_open_document_content() {
-        let uri = Url::parse("file:///tmp/rustify-invalid-preview.ts").unwrap();
+        let uri =
+            Url::from_file_path(std::env::temp_dir().join("rustify-invalid-preview.ts")).unwrap();
         let documents = HashMap::from([(uri.clone(), "console.log(\"runtime\")".to_owned())]);
         let error = preview_translation(&uri, &documents).unwrap_err();
         assert!(error.contains("SFT046"), "{error}");
