@@ -7,37 +7,80 @@
 
     <style>
       :root {
+        --bg-main: #0c1017;
+        --bg-header: #090d14;
+        --bg-panel: #0f141f;
+        --bg-pane: #090d14;
+        --bg-status: #0e131f;
+        --border-color: #283244;
+
+        --text-main: #d9e2f2;
+        --text-header: #ffffff;
+        --text-sub: #8da2bf;
+        --text-status: #74d59b;
+        --text-status-err: #ff8c8c;
+
+        --theme-selector-bg: #161b26;
+        --theme-selector-text: #8da2bf;
+
         color-scheme: dark;
         font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      }
+      body.light-theme {
+        --bg-main: #f3f4f6;
+        --bg-header: #ffffff;
+        --bg-panel: #f9fafb;
+        --bg-pane: #ffffff;
+        --bg-status: #f3f4f6;
+        --border-color: #e5e7eb;
+
+        --text-main: #1f2937;
+        --text-header: #111827;
+        --text-sub: #4b5563;
+        --text-status: #059669;
+        --text-status-err: #dc2626;
+
+        --theme-selector-bg: #ffffff;
+        --theme-selector-text: #4b5563;
+
+        color-scheme: light;
       }
       * {
         box-sizing: border-box;
       }
       body {
         margin: 0;
-        background: #0c1017;
-        color: #d9e2f2;
+        background: var(--bg-main);
+        color: var(--text-main);
         overflow: hidden;
+        transition:
+          background 0.15s,
+          color 0.15s;
       }
       header {
         display: flex;
         align-items: center;
         gap: 18px;
         padding: 14px 24px;
-        border-bottom: 1px solid #283244;
-        background: #090d14;
+        border-bottom: 1px solid var(--border-color);
+        background: var(--bg-header);
         height: 60px;
+        transition:
+          background 0.15s,
+          border-color 0.15s;
       }
       h1 {
         margin: 0;
         font-size: 16px;
         font-weight: 700;
-        color: #ffffff;
+        color: var(--text-header);
         letter-spacing: -0.02em;
+        transition: color 0.15s;
       }
       header span {
-        color: #8da2bf;
+        color: var(--text-sub);
         font-size: 12px;
+        transition: color 0.15s;
       }
       button {
         margin-left: auto;
@@ -66,61 +109,77 @@
         height: 100%;
       }
       section + section {
-        border-left: 1px solid #283244;
+        border-left: 1px solid var(--border-color);
+        transition: border-color 0.15s;
       }
       .panel-header {
         display: flex;
         align-items: center;
         justify-content: space-between;
         padding: 10px 16px;
-        border-bottom: 1px solid #283244;
-        background: #0f141f;
+        border-bottom: 1px solid var(--border-color);
+        background: var(--bg-panel);
         height: 40px;
+        transition:
+          background 0.15s,
+          border-color 0.15s;
       }
       label {
-        color: #8da2bf;
+        color: var(--text-sub);
         font-size: 11px;
         text-transform: uppercase;
         letter-spacing: 0.08em;
         font-weight: 700;
+        transition: color 0.15s;
       }
       .editor-pane {
         flex: 1;
         overflow: hidden;
         position: relative;
-        background: #090d14;
+        background: var(--bg-pane);
+        transition: background 0.15s;
       }
       .cm-editor {
         height: 100%;
         font-size: 13px;
       }
-      #theme-selector {
-        background: #161b26;
-        color: #8da2bf;
-        border: 1px solid #283244;
+      #theme-selector,
+      #example-selector {
+        background: var(--theme-selector-bg);
+        color: var(--theme-selector-text);
+        border: 1px solid var(--border-color);
         border-radius: 4px;
         padding: 2px 6px;
         font-size: 11px;
         outline: none;
         cursor: pointer;
+        transition:
+          background 0.15s,
+          color 0.15s,
+          border-color 0.15s;
       }
-      #theme-selector:hover {
-        border-color: #8da2bf;
-        color: #ffffff;
+      #theme-selector:hover,
+      #example-selector:hover {
+        border-color: var(--text-sub);
+        color: var(--text-header);
       }
       #status {
         padding: 12px 16px;
         min-height: 50px;
         max-height: 150px;
-        border-top: 1px solid #283244;
-        color: #74d59b;
+        border-top: 1px solid var(--border-color);
+        color: var(--text-status);
         font-size: 12px;
         white-space: pre-wrap;
         overflow-y: auto;
-        background: #0e131f;
+        background: var(--bg-status);
+        transition:
+          background 0.15s,
+          border-color 0.15s,
+          color 0.15s;
       }
       #status.error {
-        color: #ff8c8c;
+        color: var(--text-status-err);
       }
       @media (max-width: 800px) {
         main {
@@ -129,7 +188,7 @@
         }
         section + section {
           border-left: 0;
-          border-top: 1px solid #283244;
+          border-top: 1px solid var(--border-color);
         }
       }
     </style>
@@ -145,10 +204,25 @@
       <section>
         <div class="panel-header">
           <label>Rustify TypeScript</label>
-          <select id="theme-selector">
-            <option value="onedark">One Dark</option>
-            <option value="light">Tema Claro</option>
-          </select>
+
+          <div style="display: flex; gap: 8px">
+            <select id="example-selector">
+              <option value="hello">1. Hello World (Básico)</option>
+              <option value="globals">2. Constantes Globales</option>
+              <option value="control_flow">3. Flujo de Control</option>
+              <option value="arrays">4. Operaciones con Arrays</option>
+              <option value="strings">5. Operaciones con Strings</option>
+              <option value="enums_options">6. Enums y Opciones</option>
+              <option value="async_promesas">
+                7. Asincronismo y Promesas (Complejo)
+              </option>
+            </select>
+
+            <select id="theme-selector">
+              <option value="onedark">One Dark</option>
+              <option value="light">Tema Claro</option>
+            </select>
+          </div>
         </div>
 
         <div id="source-container" class="editor-pane"></div>
@@ -181,6 +255,7 @@
       import { javascript } from "https://esm.sh/@codemirror/lang-javascript";
       import { rust } from "https://esm.sh/@codemirror/lang-rust";
       import { oneDark } from "https://esm.sh/@codemirror/theme-one-dark";
+      import { xcodeLight } from "https://esm.sh/@uiw/codemirror-theme-xcode";
       import {
         autocompletion,
         completionKeymap,
@@ -286,11 +361,139 @@
         }
       }
 
+      // Ejemplos predefinidos
+      const EXAMPLES = {
+        hello: `type User = {
+  name: string
+  active: boolean
+}
+
+function greet(user: User): string {
+  return \`Hello \${user.name}\`
+}
+
+function buildUser(): User {
+  return { name: "Ada", active: true }
+}`,
+        globals: `export const appName = "RustifyGlobalDemo";
+export const timeoutMs = 5000;
+export const maxConnections = 20;
+
+function getConfigDescription(): string {
+  return \`App: \${appName}, Timeout: \${timeoutMs}ms, Max: \${maxConnections}\`;
+}`,
+        control_flow: `function sum(values: number[]): number {
+  let total: number = 0;
+
+  for (const value of values) {
+    if (value === 0) { continue; }
+
+    total = total + value;
+
+    if (total > 100) { break; }
+  }
+
+  return total;
+}
+
+function describeNumber(value: number): string {
+  if (value > 0) {
+    return "positive";
+  } else if (value < 0) {
+    return "negative";
+  } else {
+    return "zero";
+  }
+}`,
+        arrays: `function manageList(values: string[], target: string): string[] {
+  let result: string[] = values;
+  result.push(target);
+  const last = result.pop();
+
+  return result;
+}
+
+function atIndex(values: number[], index: number): number | null {
+  return values[index];
+}
+
+function getArrayLength(items: string[]): number {
+  return items.length;
+}`,
+        strings: `function contains(values: string[], target: string): boolean {
+  return values.includes(target);
+}
+
+function matches(value: string, target: string): boolean {
+  return value.includes(target) && value.startsWith(target) || value.endsWith(target);
+}
+
+function normalize(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function joined(values: string[], separator: string): string {
+  return values.join(separator);
+}`,
+        enums_options: `enum Status {
+  Active,
+  Inactive
+}
+
+function currentStatus(): Status {
+  return Status.Active;
+}
+
+function maybeValue(enabled: boolean): string | null {
+  if (enabled) { return "yes"; }
+  return null;
+}
+
+function checkOption(value: string | null): boolean {
+  return value.isSome();
+}`,
+        async_promesas: `async function loadMessage(): Promise<string> {
+  return "ready";
+}
+
+async function relayMessage(): Promise<string> {
+  return await loadMessage();
+}
+
+async function pause(ms: number): Promise<void> {
+  await Rustify.sleep(ms);
+}`,
+      };
+
+      // Selector de Ejemplos
+      const exampleSelector = document.querySelector("#example-selector");
+      exampleSelector.addEventListener("change", (e) => {
+        const key = e.target.value;
+
+        if (EXAMPLES[key]) {
+          leftEditor.dispatch({
+            changes: {
+              from: 0,
+              to: leftEditor.state.doc.length,
+              insert: EXAMPLES[key],
+            },
+          });
+          compile();
+        }
+      });
+
       // Selector de Temas Dinámico
       const themeSelector = document.querySelector("#theme-selector");
       themeSelector.addEventListener("change", (e) => {
         const selected = e.target.value;
-        const themeExtension = selected === "onedark" ? oneDark : [];
+        const themeExtension = selected === "onedark" ? oneDark : xcodeLight;
+
+        // Cambiar la clase del layout completo
+        if (selected === "light") {
+          document.body.classList.add("light-theme");
+        } else {
+          document.body.classList.remove("light-theme");
+        }
 
         // Aplicar el cambio a ambos editores
         leftEditor.dispatch({
