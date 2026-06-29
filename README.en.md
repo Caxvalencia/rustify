@@ -1,12 +1,40 @@
-# Rustify
+<div align="center">
+  <img src="assets/logo.png" alt="Rustify Logo" width="220" />
+  <h1>Rustify</h1>
+  <p><b>A strict TypeScript-to-Rust compiler for safe, readable, warning-free Rust</b></p>
 
-<p align="center">
-  <img src="assets/logo.png" alt="Rustify Logo" width="160" />
-</p>
+  <p>
+    <a href="https://www.rust-lang.org/" target="_blank" rel="noopener noreferrer">
+      <img src="https://img.shields.io/badge/Rust-2024-dea584?style=flat-square&logo=rust" alt="Rust 2024" />
+    </a>
+    <a href="https://www.typescriptlang.org/" target="_blank" rel="noopener noreferrer">
+      <img src="https://img.shields.io/badge/TypeScript-subset-3178c6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript subset" />
+    </a>
+    <a href="https://oxc.rs/" target="_blank" rel="noopener noreferrer">
+      <img src="https://img.shields.io/badge/Oxc-parser-6f42c1?style=flat-square" alt="Oxc parser" />
+    </a>
+    <a href="https://eslint.org/" target="_blank" rel="noopener noreferrer">
+      <img src="https://img.shields.io/badge/ESLint-9%2B-4b32c3?style=flat-square&logo=eslint" alt="ESLint 9+" />
+    </a>
+    <a href="https://nodejs.org/" target="_blank" rel="noopener noreferrer">
+      <img src="https://img.shields.io/badge/Node.js-20%2B-5fa04e?style=flat-square&logo=node.js&logoColor=white" alt="Node.js 20+" />
+    </a>
+    <a href="https://code.visualstudio.com/" target="_blank" rel="noopener noreferrer">
+      <img src="https://img.shields.io/badge/VS%20Code-1.90%2B-007acc?style=flat-square&logo=visualstudiocode" alt="VS Code 1.90+" />
+    </a>
+    <a href="https://opensource.org/license/mit" target="_blank" rel="noopener noreferrer">
+      <img src="https://img.shields.io/badge/License-MIT-green?style=flat-square" alt="MIT License" />
+    </a>
+  </p>
+</div>
 
-Rustify compiles a deliberately strict subset of TypeScript into safe, readable Rust.
-The current `1.0.0` release includes an Oxc-backed parser, shared analyzer, typed IR, Rust
-code generator, CLI, language server, ESLint plugin, and VS Code extension.
+---
+
+**Rustify** compiles a deliberately strict subset of TypeScript into safe, readable Rust that fits naturally into Cargo projects.
+
+The current `1.0.0` release includes an Oxc-backed parser, shared analyzer, typed IR, Rust code generator, CLI, language server, ESLint plugin, and VS Code extension.
+
+---
 
 ## Supported in 1.0
 

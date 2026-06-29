@@ -1,11 +1,40 @@
-# Rustify
+<div align="center">
+  <img src="assets/logo.png" alt="Logo de Rustify" width="220" />
+  <h1>Rustify</h1>
+  <p><b>Compilador de TypeScript estricto a Rust seguro, legible y libre de advertencias</b></p>
 
-<p align="center">
-  <img src="assets/logo.png" alt="Logo de Rustify" width="160" />
-</p>
+  <p>
+    <a href="https://www.rust-lang.org/" target="_blank" rel="noopener noreferrer">
+      <img src="https://img.shields.io/badge/Rust-2024-dea584?style=flat-square&logo=rust" alt="Rust 2024" />
+    </a>
+    <a href="https://www.typescriptlang.org/" target="_blank" rel="noopener noreferrer">
+      <img src="https://img.shields.io/badge/TypeScript-subset-3178c6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript subset" />
+    </a>
+    <a href="https://oxc.rs/" target="_blank" rel="noopener noreferrer">
+      <img src="https://img.shields.io/badge/Oxc-parser-6f42c1?style=flat-square" alt="Oxc parser" />
+    </a>
+    <a href="https://eslint.org/" target="_blank" rel="noopener noreferrer">
+      <img src="https://img.shields.io/badge/ESLint-9%2B-4b32c3?style=flat-square&logo=eslint" alt="ESLint 9+" />
+    </a>
+    <a href="https://nodejs.org/" target="_blank" rel="noopener noreferrer">
+      <img src="https://img.shields.io/badge/Node.js-20%2B-5fa04e?style=flat-square&logo=node.js&logoColor=white" alt="Node.js 20+" />
+    </a>
+    <a href="https://code.visualstudio.com/" target="_blank" rel="noopener noreferrer">
+      <img src="https://img.shields.io/badge/VS%20Code-1.90%2B-007acc?style=flat-square&logo=visualstudiocode" alt="VS Code 1.90+" />
+    </a>
+    <a href="https://opensource.org/license/mit" target="_blank" rel="noopener noreferrer">
+      <img src="https://img.shields.io/badge/License-MIT-green?style=flat-square" alt="Licencia MIT" />
+    </a>
+  </p>
+</div>
 
-Rustify compila un subconjunto deliberadamente estricto de TypeScript a Rust seguro y legible.
+---
+
+**Rustify** compila un subconjunto deliberadamente estricto de TypeScript a Rust seguro, legible y compatible con proyectos Cargo.
+
 La versión actual `1.0.0` incluye un analizador sintáctico respaldado por Oxc, un analizador compartido, una representación intermedia (IR) tipada, un generador de código de Rust, una interfaz de línea de comandos (CLI), un servidor de lenguaje (LSP), un plugin de ESLint y una extensión de VS Code.
+
+---
 
 ## Soportado en 1.0
 
